@@ -1,72 +1,83 @@
 import 'package:flutter/material.dart';
-import 'package:code_editor/code_editor.dart';
+import 'exports.dart';
 
-void main() => runApp(MyApp());
+import 'DummySyntaxHighlighter.dart';
 
-class MyApp extends StatelessWidget {
+void main() {
+  runApp(MaterialApp(
+    home: Home(),
+  ));
+}
+
+class Home extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'code_editor tests',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: Scaffold(
-        appBar: AppBar(title: Text("code_editor tests"), elevation: 0),
-        body: MyEditor(),
+    return Scaffold(
+      body: Container(
+        child: Center(
+          child: TextButton(
+            onPressed: () {
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (context) => DemoCodeEditor()));
+            },
+            child: Text("My Code Editor"),
+          ),
+        ),
       ),
     );
   }
 }
 
-class MyEditor extends StatelessWidget {
+class DemoCodeEditor extends StatefulWidget {
+  @override
+  _DemoCodeEditorState createState() => _DemoCodeEditorState();
+}
+
+class _DemoCodeEditorState extends State<DemoCodeEditor> {
+  RichCodeEditingController? _rec;
+  SyntaxHighlighterBase? _syntaxHighlighterBase;
+
+  @override
+  void initState() {
+    super.initState();
+    _syntaxHighlighterBase = DummySyntaxHighlighter();
+    _rec = RichCodeEditingController(_syntaxHighlighterBase, text: '');
+  }
+
+  @override
+  void dispose() {
+    //_richTextFieldState.currentState?.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    List<String> contentOfPage1 = [
-      "<!DOCTYPE html>",
-      "<html lang='fr'>",
-      "\t<body>",
-      "\t\t<a href='page2.html'>go to page 2</a>",
-      "\t</body>",
-      "</html>",
-    ];
-
-    List<FileEditor> files = [
-      new FileEditor(
-        name: "page1.html",
-        language: "html",
-        code: contentOfPage1.join("\n"),
+    return new Scaffold(
+      appBar: new AppBar(
+        title: new Text("Dummy Editor"),
       ),
-      new FileEditor(
-        name: "page2.html",
-        language: "html",
-        code: "<a href='page1.html'>go back</a>",
-      ),
-      new FileEditor(
-        name: "style.css",
-        language: "css",
-        code: "a { color: red; }",
-      ),
-    ];
-
-    EditorModel model = new EditorModel(
-      files: files,
-      styleOptions: new EditorModelStyleOptions(
-        fontSize: 13,
-      ),
-    );
-
-    // since 1.3.1
-    model.styleOptions?.defineEditButtonPosition(top: 10.0, right: 10.0);
-
-    return SingleChildScrollView(
-      child: CodeEditor(
-        model: model,
-        onSubmit: (String? language, String? value) {
-          print("language = $language");
-          print("value = '$value'");
-        },
-      ),
+      body: Container(
+          height: 300.0,
+          margin: EdgeInsets.all(24.0),
+          padding: EdgeInsets.all(24.0),
+          decoration:
+              new BoxDecoration(border: new Border.all(color: Colors.grey)),
+          child: RichCodeField(
+            autofocus: true,
+            controller: _rec,
+            textCapitalization: TextCapitalization.none,
+            decoration: null,
+            syntaxHighlighter: _syntaxHighlighterBase,
+            maxLines: null,
+            onChanged: (String s) {},
+            onBackSpacePress: (TextEditingValue oldValue) {},
+            onEnterPress: (TextEditingValue oldValue) {
+              var result = _syntaxHighlighterBase!.onEnterPress(oldValue);
+              if (result != null) {
+                _rec!.value = result;
+              }
+            },
+          )),
     );
   }
 }
