@@ -23,11 +23,14 @@ class CodeEditor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SizedBox.expand(
-        child: TextField(
-          decoration: null,
-          keyboardType: TextInputType.multiline,
-          maxLines: null,
+      body: Container(
+        padding: EdgeInsets.all(3.0),
+        child: SizedBox.expand(
+          child: TextField(
+            decoration: null,
+            keyboardType: TextInputType.multiline,
+            maxLines: null,
+          ),
         ),
       ),
     );
