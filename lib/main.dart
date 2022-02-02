@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'my_text_field.dart';
+
 void main() => runApp(const MoonApp());
 
 class MoonApp extends StatelessWidget {
@@ -26,7 +28,7 @@ class CodeEditor extends StatelessWidget {
       body: Container(
         padding: EdgeInsets.all(3.0),
         child: SizedBox.expand(
-          child: TextField(
+          child: MyTextField(
             decoration: null,
             keyboardType: TextInputType.multiline,
             maxLines: null,
