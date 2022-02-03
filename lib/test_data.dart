@@ -1,4 +1,7 @@
+class TestData {
+  static const String text = '''
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:moon/test_data.dart';
 
 import 'my_text_field.dart';
@@ -30,7 +33,7 @@ class CodeEditor extends StatelessWidget {
         padding: EdgeInsets.all(3.0),
         child: SizedBox.expand(
           child: MyTextField(
-            controller: TextEditingController(text: TestData.text),
+            controller: TextEditingController(text: TestData.json),
             decoration: null,
             keyboardType: TextInputType.multiline,
             maxLines: null,
@@ -39,4 +42,6 @@ class CodeEditor extends StatelessWidget {
       ),
     );
   }
+}
+  ''';
 }
