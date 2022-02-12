@@ -14,6 +14,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'my_editable.dart';
+import 'my_scrollable.dart';
 import 'my_text_selection.dart';
 
 export 'package:flutter/services.dart' show SelectionChangedCause, TextEditingValue, TextSelection, TextInputType, SmartQuotesType, SmartDashesType;
@@ -2711,10 +2712,12 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
           focusNode: widget.focusNode,
           includeSemantics: false,
           debugLabel: 'EditableText',
-          child: Scrollable(
+          child: MyScrollable(
             excludeFromSemantics: true,
-            axisDirection: _isMultiline ? AxisDirection.down : AxisDirection.right,
-            controller: _scrollController,
+            horizontalAxisDirection: AxisDirection.right,
+            verticalAxisDirection: AxisDirection.down,
+            horizontalController: _scrollController,
+            verticalController: _scrollController, // fixme
             physics: widget.scrollPhysics,
             dragStartBehavior: widget.dragStartBehavior,
             restorationId: widget.restorationId,
@@ -2725,7 +2728,7 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
               scrollbars: _isMultiline,
               overscroll: false,
             ),
-            viewportBuilder: (BuildContext context, ViewportOffset offset) {
+            viewportBuilder: (BuildContext context, ViewportOffset horizontalOffset, ViewportOffset verticalOffset) {
               return CompositedTransformTarget(
                 link: _toolbarLayerLink,
                 child: Semantics(
@@ -2763,7 +2766,8 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
                     smartDashesType: widget.smartDashesType,
                     smartQuotesType: widget.smartQuotesType,
                     enableSuggestions: widget.enableSuggestions,
-                    offset: offset,
+                    horizontalOffset: horizontalOffset,
+                    verticalOffset: verticalOffset,
                     onCaretChanged: _handleCaretChanged,
                     rendererIgnoresPointer: widget.rendererIgnoresPointer,
                     cursorWidth: widget.cursorWidth,
@@ -2847,7 +2851,8 @@ class _Editable extends MultiChildRenderObjectWidget {
     required this.smartDashesType,
     required this.smartQuotesType,
     required this.enableSuggestions,
-    required this.offset,
+    required this.horizontalOffset,
+    required this.verticalOffset,
     this.onCaretChanged,
     this.rendererIgnoresPointer = false,
     required this.cursorWidth,
@@ -2907,7 +2912,8 @@ class _Editable extends MultiChildRenderObjectWidget {
   final SmartDashesType smartDashesType;
   final SmartQuotesType smartQuotesType;
   final bool enableSuggestions;
-  final ViewportOffset offset;
+  final ViewportOffset horizontalOffset;
+  final ViewportOffset verticalOffset;
   final CaretChangedHandler? onCaretChanged;
   final bool rendererIgnoresPointer;
   final double cursorWidth;
@@ -2946,7 +2952,8 @@ class _Editable extends MultiChildRenderObjectWidget {
       textDirection: textDirection,
       locale: locale ?? Localizations.maybeLocaleOf(context),
       selection: value.selection,
-      offset: offset,
+      horizontalOffset: horizontalOffset,
+      verticalOffset: verticalOffset,
       onCaretChanged: onCaretChanged,
       ignorePointer: rendererIgnoresPointer,
       obscuringCharacter: obscuringCharacter,
@@ -2990,7 +2997,8 @@ class _Editable extends MultiChildRenderObjectWidget {
       ..textDirection = textDirection
       ..locale = locale ?? Localizations.maybeLocaleOf(context)
       ..selection = value.selection
-      ..offset = offset
+      ..horizontalOffset = horizontalOffset
+      ..verticalOffset = verticalOffset
       ..onCaretChanged = onCaretChanged
       ..ignorePointer = rendererIgnoresPointer
       ..textHeightBehavior = textHeightBehavior

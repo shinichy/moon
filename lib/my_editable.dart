@@ -175,7 +175,7 @@ class MyVerticalCaretMovementRun extends BidirectionalIterator<TextPosition> {
 /// provide affordances for editing the text, but it does handle text selection
 /// and manipulation of the text cursor.
 ///
-/// The [text] is displayed, scrolled by the given [offset], aligned according
+/// The [text] is displayed, scrolled by the given [horizontalOffset] and [verticalOffset], aligned according
 /// to [textAlign]. The [maxLines] property controls whether the text displays
 /// on one line or many. The [selection], if it is not collapsed, is painted in
 /// the [selectionColor]. If it _is_ collapsed, then it represents the cursor
@@ -201,7 +201,7 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
   /// the number of lines. By default, it is 1, meaning this is a single-line
   /// text field. If it is not null, it must be greater than zero.
   ///
-  /// The [offset] is required and must not be null. You can use [new
+  /// The [horizontalOffset] and [verticalOffset] are required and must not be null. You can use [new
   /// ViewportOffset.zero] if you have no need for scrolling.
   MyRenderEditable({
     InlineSpan? text,
@@ -220,7 +220,8 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
     Color? selectionColor,
     double textScaleFactor = 1.0,
     TextSelection? selection,
-    required ViewportOffset offset,
+    required ViewportOffset horizontalOffset,
+    required ViewportOffset verticalOffset,
     @Deprecated(
       'Uses the textSelectionDelegate.userUpdateTextEditingValue instead. '
           'This feature was deprecated after v1.26.0-17.2.pre.',
@@ -268,7 +269,8 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
         'minLines and maxLines must be null when expands is true.',
         ),
         assert(textScaleFactor != null),
-        assert(offset != null),
+        assert(horizontalOffset != null),
+        assert(verticalOffset != null),
         assert(ignorePointer != null),
         assert(textWidthBasis != null),
         assert(paintCursorAboveText != null),
@@ -298,7 +300,8 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
         _minLines = minLines,
         _expands = expands,
         _selection = selection,
-        _offset = offset,
+        _horizontalOffset = horizontalOffset,
+        _verticalOffset = verticalOffset,
         _cursorWidth = cursorWidth,
         _cursorHeight = cursorHeight,
         _paintCursorOnTop = paintCursorAboveText,
@@ -997,22 +1000,39 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
     markNeedsSemanticsUpdate();
   }
 
-  /// The offset at which the text should be painted.
+  /// The offset at which the text should be painted horizontally.
   ///
   /// If the text content is larger than the editable line itself, the editable
   /// line clips the text. This property controls which part of the text is
   /// visible by shifting the text by the given offset before clipping.
-  ViewportOffset get offset => _offset;
-  ViewportOffset _offset;
-  set offset(ViewportOffset value) {
-    assert(value != null);
-    if (_offset == value)
+  ViewportOffset get horizontalOffset => _horizontalOffset;
+  ViewportOffset _horizontalOffset;
+  set horizontalOffset(ViewportOffset value) {
+    if (_horizontalOffset == value)
       return;
     if (attached)
-      _offset.removeListener(markNeedsPaint);
-    _offset = value;
+      _horizontalOffset.removeListener(markNeedsPaint);
+    _horizontalOffset = value;
     if (attached)
-      _offset.addListener(markNeedsPaint);
+      _horizontalOffset.addListener(markNeedsPaint);
+    markNeedsLayout();
+  }
+
+  /// The offset at which the text should be painted vertically.
+  ///
+  /// If the text content is larger than the editable line itself, the editable
+  /// line clips the text. This property controls which part of the text is
+  /// visible by shifting the text by the given offset before clipping.
+  ViewportOffset get verticalOffset => _verticalOffset;
+  ViewportOffset _verticalOffset;
+  set verticalOffset(ViewportOffset value) {
+    if (_verticalOffset == value)
+      return;
+    if (attached)
+      _verticalOffset.removeListener(markNeedsPaint);
+    _verticalOffset = value;
+    if (attached)
+      _verticalOffset.addListener(markNeedsPaint);
     markNeedsLayout();
   }
 
@@ -1187,13 +1207,21 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
     _autocorrectHighlightPainter.highlightedRange = newRange;
   }
 
-  /// The maximum amount the text is allowed to scroll.
+  /// The maximum amount the text is allowed to scroll horizontally.
   ///
   /// This value is only valid after layout and can change as additional
   /// text is entered or removed in order to accommodate expanding when
   /// [expands] is set to true.
-  double get maxScrollExtent => _maxScrollExtent;
-  double _maxScrollExtent = 0;
+  double get maxHorizontalScrollExtent => _maxHorizontalScrollExtent;
+  double _maxHorizontalScrollExtent = 0;
+
+  /// The maximum amount the text is allowed to scroll vertically.
+  ///
+  /// This value is only valid after layout and can change as additional
+  /// text is entered or removed in order to accommodate expanding when
+  /// [expands] is set to true.
+  double get maxVerticalScrollExtent => _maxVerticalScrollExtent;
+  double _maxVerticalScrollExtent = 0;
 
   double get _caretMargin => _kCaretGap + cursorWidth;
 
@@ -1520,7 +1548,8 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
       ..onTapDown = _handleTapDown
       ..onTap = _handleTap;
     _longPress = LongPressGestureRecognizer(debugOwner: this)..onLongPress = _handleLongPress;
-    _offset.addListener(markNeedsPaint);
+    _horizontalOffset.addListener(markNeedsPaint);
+    _verticalOffset.addListener(markNeedsPaint);
     _showHideCursor();
     _showCursor.addListener(_showHideCursor);
   }
@@ -1529,7 +1558,8 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
   void detach() {
     _tap.dispose();
     _longPress.dispose();
-    _offset.removeListener(markNeedsPaint);
+    _horizontalOffset.removeListener(markNeedsPaint);
+    _verticalOffset.removeListener(markNeedsPaint);
     _showCursor.removeListener(_showHideCursor);
     super.detach();
     _foregroundRenderObject?.detach();
@@ -1560,40 +1590,36 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
 
   bool get _isMultiline => maxLines != 1;
 
-  Axis get _viewportAxis => _isMultiline ? Axis.vertical : Axis.horizontal;
-
   Offset get _paintOffset {
-    switch (_viewportAxis) {
-      case Axis.horizontal:
-        return Offset(-offset.pixels, 0.0);
-      case Axis.vertical:
-        return Offset(0.0, -offset.pixels);
-    }
+    return Offset(-horizontalOffset.pixels, -verticalOffset.pixels);
   }
 
-  double get _viewportExtent {
+  double get _horizontalViewportExtent {
     assert(hasSize);
-    switch (_viewportAxis) {
-      case Axis.horizontal:
-        return size.width;
-      case Axis.vertical:
-        return size.height;
-    }
+    return size.width;
   }
 
-  double _getMaxScrollExtent(Size contentSize) {
+  double get _verticalViewportExtent {
     assert(hasSize);
-    switch (_viewportAxis) {
-      case Axis.horizontal:
-        return math.max(0.0, contentSize.width - size.width);
-      case Axis.vertical:
-        return math.max(0.0, contentSize.height - size.height);
-    }
+    return size.height;
+  }
+
+  double _getMaxHorizontalScrollExtent(Size contentSize) {
+    assert(hasSize);
+    return math.max(0.0, contentSize.width - size.width);
+  }
+
+  double _getMaxVerticalScrollExtent(Size contentSize) {
+    assert(hasSize);
+    return math.max(0.0, contentSize.height - size.height);
   }
 
   // We need to check the paint offset here because during animation, the start of
   // the text may position outside the visible region even when the text fits.
-  bool get _hasVisualOverflow => _maxScrollExtent > 0 || _paintOffset != Offset.zero;
+  bool get _hasVisualOverflow =>
+      _maxHorizontalScrollExtent > 0 ||
+      _maxVerticalScrollExtent > 0 ||
+      _paintOffset != Offset.zero;
 
   /// Returns the local coordinates of the endpoints of the given selection.
   ///
@@ -2265,9 +2291,13 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
     _foregroundRenderObject?.layout(painterConstraints);
     _backgroundRenderObject?.layout(painterConstraints);
 
-    _maxScrollExtent = _getMaxScrollExtent(contentSize);
-    offset.applyViewportDimension(_viewportExtent);
-    offset.applyContentDimensions(0.0, _maxScrollExtent);
+    _maxHorizontalScrollExtent = _getMaxHorizontalScrollExtent(contentSize);
+    horizontalOffset.applyViewportDimension(_horizontalViewportExtent);
+    horizontalOffset.applyContentDimensions(0.0, _maxHorizontalScrollExtent);
+    
+    _maxVerticalScrollExtent = _getMaxVerticalScrollExtent(contentSize);
+    verticalOffset.applyViewportDimension(_verticalViewportExtent);
+    verticalOffset.applyContentDimensions(0.0, _maxVerticalScrollExtent);
   }
 
   // The relative origin in relation to the distance the user has theoretically
@@ -2510,7 +2540,8 @@ class MyRenderEditable extends RenderBox with RelayoutWhenSystemFontsChangeMixin
     properties.add(DoubleProperty('textScaleFactor', textScaleFactor));
     properties.add(DiagnosticsProperty<Locale>('locale', locale, defaultValue: null));
     properties.add(DiagnosticsProperty<TextSelection>('selection', selection));
-    properties.add(DiagnosticsProperty<ViewportOffset>('offset', offset));
+    properties.add(DiagnosticsProperty<ViewportOffset>('horizontalOffset', horizontalOffset));
+    properties.add(DiagnosticsProperty<ViewportOffset>('verticalOffset', verticalOffset));
   }
 
   @override

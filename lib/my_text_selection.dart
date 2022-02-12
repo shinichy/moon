@@ -844,8 +844,11 @@ class MyTextSelectionGestureDetectorBuilder {
   @protected
   MyRenderEditable get renderEditable => editableText.renderEditable;
 
-  /// The viewport offset pixels of the [RenderEditable] at the last drag start.
-  double _dragStartViewportOffset = 0.0;
+  /// The horizontal viewport offset pixels of the [RenderEditable] at the last drag start.
+  double _dragStartHorizontalViewportOffset = 0.0;
+
+  /// The vertical viewport offset pixels of the [RenderEditable] at the last drag start.
+  double _dragStartVerticalViewportOffset = 0.0;
 
   // True iff a tap + shift has been detected but the tap has not yet come up.
   bool _isShiftTapping = false;
@@ -1114,7 +1117,8 @@ class MyTextSelectionGestureDetectorBuilder {
       cause: SelectionChangedCause.drag,
     );
 
-    _dragStartViewportOffset = renderEditable.offset.pixels;
+    _dragStartHorizontalViewportOffset = renderEditable.horizontalOffset.pixels;
+    _dragStartVerticalViewportOffset = renderEditable.verticalOffset.pixels;
   }
 
   /// Handler for [MyTextSelectionGestureDetector.onDragSelectionUpdate].
@@ -1133,8 +1137,10 @@ class MyTextSelectionGestureDetectorBuilder {
 
     // Adjust the drag start offset for possible viewport offset changes.
     final Offset startOffset = renderEditable.maxLines == 1
-        ? Offset(renderEditable.offset.pixels - _dragStartViewportOffset, 0.0)
-        : Offset(0.0, renderEditable.offset.pixels - _dragStartViewportOffset);
+        ? Offset(renderEditable.horizontalOffset.pixels - _dragStartHorizontalViewportOffset, 0.0)
+        : Offset(
+            renderEditable.horizontalOffset.pixels - _dragStartHorizontalViewportOffset,
+            renderEditable.verticalOffset.pixels - _dragStartVerticalViewportOffset);
 
     renderEditable.selectPositionAt(
       from: startDetails.globalPosition - startOffset,
