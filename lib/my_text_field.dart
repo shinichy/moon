@@ -316,7 +316,8 @@ class MyTextField extends StatefulWidget {
     this.onTap,
     this.mouseCursor,
     this.buildCounter,
-    this.scrollController,
+    this.horizontalScrollController,
+    this.verticalScrollController,
     this.scrollPhysics,
     this.autofillHints = const <String>[],
     this.clipBehavior = Clip.hardEdge,
@@ -730,7 +731,10 @@ class MyTextField extends StatefulWidget {
   final ScrollPhysics? scrollPhysics;
 
   /// {@macro flutter.widgets.editableText.scrollController}
-  final ScrollController? scrollController;
+  final ScrollController? horizontalScrollController;
+
+  /// {@macro flutter.widgets.editableText.scrollController}
+  final ScrollController? verticalScrollController;
 
   /// {@macro flutter.widgets.editableText.autofillHints}
   /// {@macro flutter.services.AutofillConfiguration.autofillHints}
@@ -801,7 +805,8 @@ class MyTextField extends StatefulWidget {
     properties.add(DiagnosticsProperty<EdgeInsetsGeometry>('scrollPadding', scrollPadding, defaultValue: const EdgeInsets.all(20.0)));
     properties.add(FlagProperty('selectionEnabled', value: selectionEnabled, defaultValue: true, ifFalse: 'selection disabled'));
     properties.add(DiagnosticsProperty<TextSelectionControls>('selectionControls', selectionControls, defaultValue: null));
-    properties.add(DiagnosticsProperty<ScrollController>('scrollController', scrollController, defaultValue: null));
+    properties.add(DiagnosticsProperty<ScrollController>('horizontalScrollController', horizontalScrollController, defaultValue: null));
+    properties.add(DiagnosticsProperty<ScrollController>('verticalScrollController', verticalScrollController, defaultValue: null));
     properties.add(DiagnosticsProperty<ScrollPhysics>('scrollPhysics', scrollPhysics, defaultValue: null));
     properties.add(DiagnosticsProperty<Clip>('clipBehavior', clipBehavior, defaultValue: Clip.hardEdge));
     properties.add(DiagnosticsProperty<bool>('enableIMEPersonalizedLearning', enableIMEPersonalizedLearning, defaultValue: true));
@@ -1259,7 +1264,8 @@ class _MyTextFieldState extends State<MyTextField> with RestorationMixin impleme
           keyboardAppearance: keyboardAppearance,
           enableInteractiveSelection: widget.enableInteractiveSelection,
           dragStartBehavior: widget.dragStartBehavior,
-          scrollController: widget.scrollController,
+          horizontalScrollController: widget.horizontalScrollController,
+          verticalScrollController: widget.verticalScrollController,
           scrollPhysics: widget.scrollPhysics,
           autofillClient: this,
           autocorrectionTextRectColor: autocorrectionTextRectColor,

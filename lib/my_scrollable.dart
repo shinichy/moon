@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// ignore_for_file: curly_braces_in_flow_control_structures
+
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -398,6 +400,54 @@ class _ScrollableScope extends InheritedWidget {
   }
 }
 
+class MySingleScrollableState implements ScrollContext {
+  final AxisDirection _axisDirection;
+  final MyScrollableState _parentState;
+
+  MySingleScrollableState(this._parentState, this._axisDirection);
+
+  @override
+  AxisDirection get axisDirection => _axisDirection;
+
+  @override
+  BuildContext? get notificationContext => _parentState._gestureDetectorKey.currentContext;
+
+  @override
+  void saveOffset(double offset) {
+    switch (axisDirection) {
+      case AxisDirection.up:
+      case AxisDirection.down:
+        _parentState.saveOffsets(_parentState.horizontalPosition.pixels, offset);
+        break;
+      case AxisDirection.right:
+      case AxisDirection.left:
+        _parentState.saveOffsets(offset, _parentState.verticalPosition.pixels);
+        break;
+    }
+  }
+
+  @override
+  void setCanDrag(bool value) {
+    _parentState.setCanDrag(value);
+  }
+
+  @override
+  void setIgnorePointer(bool value) {
+    _parentState.setIgnorePointer(value);
+  }
+
+  @override
+  void setSemanticsActions(Set<SemanticsAction> actions) {
+    _parentState.setSemanticsActions(actions);
+  }
+
+  @override
+  BuildContext get storageContext => _parentState.storageContext;
+
+  @override
+  TickerProvider get vsync => _parentState.vsync;
+}
+
 /// State object for a [MyScrollable] widget.
 ///
 /// To manipulate a [MyScrollable] widget's scroll position, use the object
@@ -461,7 +511,7 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
       scheduleMicrotask(oldPosition.dispose);
     }
 
-    _horizontalPosition = _effectiveHorizontalScrollController.createScrollPosition(_physics!, this, oldPosition);
+    _horizontalPosition = _effectiveHorizontalScrollController.createScrollPosition(_physics!, toHorizontalContext(), oldPosition);
     assert(_horizontalPosition != null);
     _effectiveHorizontalScrollController.attach(horizontalPosition);
   }
@@ -484,7 +534,7 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
       scheduleMicrotask(oldPosition.dispose);
     }
 
-    _verticalPosition = _effectiveVerticalScrollController.createScrollPosition(_physics!, this, oldPosition);
+    _verticalPosition = _effectiveVerticalScrollController.createScrollPosition(_physics!, toVerticalContext(), oldPosition);
     assert(_verticalPosition != null);
     _effectiveVerticalScrollController.attach(verticalPosition);
   }
@@ -494,8 +544,8 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
     registerForRestoration(_persistedScrollOffsets, 'offsets');
     assert(_horizontalPosition != null);
     assert(_verticalPosition != null);
-    horizontalPosition.restoreOffset(_persistedScrollOffsets.value!.first, initialRestore: initialRestore);
-    verticalPosition.restoreOffset(_persistedScrollOffsets.value!.last, initialRestore: initialRestore);
+    horizontalPosition.restoreOffset(_persistedScrollOffsets.value?.first ?? 0, initialRestore: initialRestore);
+    verticalPosition.restoreOffset(_persistedScrollOffsets.value?.last ?? 0, initialRestore: initialRestore);
   }
 
   @override
@@ -946,15 +996,26 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
       );
     }
 
-    final ScrollableDetails details = ScrollableDetails(
+    final ScrollableDetails horizontalDetails = ScrollableDetails(
       direction: widget.horizontalAxisDirection,
       controller: _effectiveHorizontalScrollController,
     );
 
+    final ScrollableDetails verticalDetails = ScrollableDetails(
+      direction: widget.verticalAxisDirection,
+      controller: _effectiveVerticalScrollController,
+    );
+
+    final Widget horizontalScrollbar = _configuration.buildScrollbar(
+      context,
+      _configuration.buildOverscrollIndicator(context, result, horizontalDetails),
+      horizontalDetails,
+    );
+
     return _configuration.buildScrollbar(
       context,
-      _configuration.buildOverscrollIndicator(context, result, details),
-      details,
+      _configuration.buildOverscrollIndicator(context, horizontalScrollbar, verticalDetails),
+      verticalDetails,
     );
   }
 
@@ -970,35 +1031,12 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
   String? get restorationId => widget.restorationId;
 
   ScrollContext toHorizontalContext() {
-    return ScrollableState();
+    return MySingleScrollableState(this, AxisDirection.right);
   }
-}
 
-/// Describes the aspects of a Scrollable widget to inform inherited widgets
-/// like [ScrollBehavior] for decorating.
-///
-/// Decorations like [GlowingOverscrollIndicator]s and [Scrollbar]s require
-/// information about the Scrollable in order to be initialized.
-@immutable
-class ScrollableDetails {
-  /// Creates a set of details describing the [MyScrollable]. The [direction]
-  /// cannot be null.
-  const ScrollableDetails({
-    required this.direction,
-    required this.controller,
-  });
-
-  /// The direction in which this widget scrolls.
-  ///
-  /// Cannot be null.
-  final AxisDirection direction;
-
-  /// A [ScrollController] that can be used to control the position of the
-  /// [MyScrollable] widget.
-  ///
-  /// This can be used by [ScrollBehavior] to apply a [Scrollbar] to the associated
-  /// [MyScrollable].
-  final ScrollController controller;
+  ScrollContext toVerticalContext() {
+    return MySingleScrollableState(this, AxisDirection.down);
+  }
 }
 
 /// With [_ScrollSemantics] certain child [SemanticsNode]s can be

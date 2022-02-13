@@ -251,7 +251,8 @@ class MyEditableText extends StatefulWidget {
     this.keyboardAppearance = Brightness.light,
     this.dragStartBehavior = DragStartBehavior.start,
     this.enableInteractiveSelection = true,
-    this.scrollController,
+    this.horizontalScrollController,
+    this.verticalScrollController,
     this.scrollPhysics,
     this.autocorrectionTextRectColor,
     this.toolbarOptions = const ToolbarOptions(
@@ -931,13 +932,22 @@ class MyEditableText extends StatefulWidget {
   final DragStartBehavior dragStartBehavior;
 
   /// {@template flutter.widgets.editableText.scrollController}
+  /// The [ScrollController] to use when horizontally scrolling the input.
+  ///
+  /// If null, it will instantiate a new ScrollController.
+  ///
+  /// See [Scrollable.controller].
+  /// {@endtemplate}
+  final ScrollController? horizontalScrollController;
+
+  /// {@template flutter.widgets.editableText.scrollController}
   /// The [ScrollController] to use when vertically scrolling the input.
   ///
   /// If null, it will instantiate a new ScrollController.
   ///
   /// See [Scrollable.controller].
   /// {@endtemplate}
-  final ScrollController? scrollController;
+  final ScrollController? verticalScrollController;
 
   /// {@template flutter.widgets.editableText.scrollPhysics}
   /// The [ScrollPhysics] to use when vertically scrolling the input.
@@ -1248,7 +1258,8 @@ class MyEditableText extends StatefulWidget {
     properties.add(DiagnosticsProperty<bool>('expands', expands, defaultValue: false));
     properties.add(DiagnosticsProperty<bool>('autofocus', autofocus, defaultValue: false));
     properties.add(DiagnosticsProperty<TextInputType>('keyboardType', keyboardType, defaultValue: null));
-    properties.add(DiagnosticsProperty<ScrollController>('scrollController', scrollController, defaultValue: null));
+    properties.add(DiagnosticsProperty<ScrollController>('horizontalScrollController', horizontalScrollController, defaultValue: null));
+    properties.add(DiagnosticsProperty<ScrollController>('verticalScrollController', verticalScrollController, defaultValue: null));
     properties.add(DiagnosticsProperty<ScrollPhysics>('scrollPhysics', scrollPhysics, defaultValue: null));
     properties.add(DiagnosticsProperty<Iterable<String>>('autofillHints', autofillHints, defaultValue: null));
     properties.add(DiagnosticsProperty<TextHeightBehavior>('textHeightBehavior', textHeightBehavior, defaultValue: null));
@@ -1267,8 +1278,10 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
   TextInputConnection? _textInputConnection;
   MyTextSelectionOverlay? _selectionOverlay;
 
-  ScrollController? _internalScrollController;
-  ScrollController get _scrollController => widget.scrollController ?? (_internalScrollController ??= ScrollController());
+  ScrollController? _internalHorizontalScrollController;
+  ScrollController? _internalVerticalScrollController;
+  ScrollController get _horizontalScrollController => widget.horizontalScrollController ?? (_internalHorizontalScrollController ??= ScrollController());
+  ScrollController get _verticalScrollController => widget.verticalScrollController ?? (_internalVerticalScrollController ??= ScrollController());
 
   AnimationController? _cursorBlinkOpacityController;
 
@@ -1446,7 +1459,8 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
     _clipboardStatus?.addListener(_onChangedClipboardStatus);
     widget.controller.addListener(_didChangeTextEditingValue);
     widget.focusNode.addListener(_handleFocusChanged);
-    _scrollController.addListener(_updateSelectionOverlayForScroll);
+    _horizontalScrollController.addListener(_updateSelectionOverlayForScroll);
+    _verticalScrollController.addListener(_updateSelectionOverlayForScroll);
     _cursorVisibilityNotifier.value = widget.showCursor;
   }
 
@@ -1512,9 +1526,14 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
       updateKeepAlive();
     }
 
-    if (widget.scrollController != oldWidget.scrollController) {
-      (oldWidget.scrollController ?? _internalScrollController)?.removeListener(_updateSelectionOverlayForScroll);
-      _scrollController.addListener(_updateSelectionOverlayForScroll);
+    if (widget.horizontalScrollController != oldWidget.horizontalScrollController) {
+      (oldWidget.horizontalScrollController ?? _internalHorizontalScrollController)?.removeListener(_updateSelectionOverlayForScroll);
+      _horizontalScrollController.addListener(_updateSelectionOverlayForScroll);
+    }
+
+    if (widget.verticalScrollController != oldWidget.verticalScrollController) {
+      (oldWidget.verticalScrollController ?? _internalVerticalScrollController)?.removeListener(_updateSelectionOverlayForScroll);
+      _verticalScrollController.addListener(_updateSelectionOverlayForScroll);
     }
 
     if (!_shouldCreateInputConnection) {
@@ -1550,7 +1569,8 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
 
   @override
   void dispose() {
-    _internalScrollController?.dispose();
+    _internalHorizontalScrollController?.dispose();
+    _internalVerticalScrollController?.dispose();
     _currentAutofillScope?.unregister(autofillId);
     widget.controller.removeListener(_didChangeTextEditingValue);
     _floatingCursorResetController?.dispose();
@@ -1886,9 +1906,9 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
   // scroll vertically), the given rect's height will first be extended to match
   // `renderEditable.preferredLineHeight`, before the target scroll offset is
   // calculated.
-  RevealedOffset _getOffsetToRevealCaret(Rect rect) {
-    if (!_scrollController.position.allowImplicitScrolling)
-      return RevealedOffset(offset: _scrollController.offset, rect: rect);
+  RevealedOffset _getHorizontalOffsetToRevealCaret(Rect rect) {
+    if (!_horizontalScrollController.position.allowImplicitScrolling)
+      return RevealedOffset(offset: _horizontalScrollController.offset, rect: rect);
 
     final Size editableSize = renderEditable.size;
     final double additionalOffset;
@@ -1920,13 +1940,66 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
 
     // No overscrolling when encountering tall fonts/scripts that extend past
     // the ascent.
-    final double targetOffset = (additionalOffset + _scrollController.offset)
+    final double targetOffset = (additionalOffset + _horizontalScrollController.offset)
         .clamp(
-      _scrollController.position.minScrollExtent,
-      _scrollController.position.maxScrollExtent,
+      _horizontalScrollController.position.minScrollExtent,
+      _horizontalScrollController.position.maxScrollExtent,
     );
 
-    final double offsetDelta = _scrollController.offset - targetOffset;
+    final double offsetDelta = _horizontalScrollController.offset - targetOffset;
+    return RevealedOffset(rect: rect.shift(unitOffset * offsetDelta), offset: targetOffset);
+  }
+
+  // Finds the closest scroll offset to the current scroll offset that fully
+  // reveals the given caret rect. If the given rect's main axis extent is too
+  // large to be fully revealed in `renderEditable`, it will be centered along
+  // the main axis.
+  //
+  // If this is a multiline EditableText (which means the Editable can only
+  // scroll vertically), the given rect's height will first be extended to match
+  // `renderEditable.preferredLineHeight`, before the target scroll offset is
+  // calculated.
+  RevealedOffset _getVerticalOffsetToRevealCaret(Rect rect) {
+    if (!_verticalScrollController.position.allowImplicitScrolling)
+      return RevealedOffset(offset: _verticalScrollController.offset, rect: rect);
+
+    final Size editableSize = renderEditable.size;
+    final double additionalOffset;
+    final Offset unitOffset;
+
+    if (!_isMultiline) {
+      additionalOffset = rect.width >= editableSize.width
+      // Center `rect` if it's oversized.
+          ? editableSize.width / 2 - rect.center.dx
+      // Valid additional offsets range from (rect.right - size.width)
+      // to (rect.left). Pick the closest one if out of range.
+          : 0.0.clamp(rect.right - editableSize.width, rect.left);
+      unitOffset = const Offset(1, 0);
+    } else {
+      // The caret is vertically centered within the line. Expand the caret's
+      // height so that it spans the line because we're going to ensure that the
+      // entire expanded caret is scrolled into view.
+      final Rect expandedRect = Rect.fromCenter(
+        center: rect.center,
+        width: rect.width,
+        height: math.max(rect.height, renderEditable.preferredLineHeight),
+      );
+
+      additionalOffset = expandedRect.height >= editableSize.height
+          ? editableSize.height / 2 - expandedRect.center.dy
+          : 0.0.clamp(expandedRect.bottom - editableSize.height, expandedRect.top);
+      unitOffset = const Offset(0, 1);
+    }
+
+    // No overscrolling when encountering tall fonts/scripts that extend past
+    // the ascent.
+    final double targetOffset = (additionalOffset + _verticalScrollController.offset)
+        .clamp(
+      _verticalScrollController.position.minScrollExtent,
+      _verticalScrollController.position.maxScrollExtent,
+    );
+
+    final double offsetDelta = _verticalScrollController.offset - targetOffset;
     return RevealedOffset(rect: rect.shift(unitOffset * offsetDelta), offset: targetOffset);
   }
 
@@ -2154,7 +2227,7 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
     _showCaretOnScreenScheduled = true;
     SchedulerBinding.instance!.addPostFrameCallback((Duration _) {
       _showCaretOnScreenScheduled = false;
-      if (_currentCaretRect == null || !_scrollController.hasClients) {
+      if (_currentCaretRect == null || !_horizontalScrollController.hasClients) {
         return;
       }
 
@@ -2185,16 +2258,17 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
       final EdgeInsets caretPadding = widget.scrollPadding
           .copyWith(bottom: bottomSpacing);
 
-      final RevealedOffset targetOffset = _getOffsetToRevealCaret(_currentCaretRect!);
+      // fixme
+      final RevealedOffset horizontalTargetOffset = _getHorizontalOffsetToRevealCaret(_currentCaretRect!);
 
-      _scrollController.animateTo(
-        targetOffset.offset,
+      _horizontalScrollController.animateTo(
+        horizontalTargetOffset.offset,
         duration: _caretAnimationDuration,
         curve: _caretAnimationCurve,
       );
 
       renderEditable.showOnScreen(
-        rect: caretPadding.inflateRect(targetOffset.rect),
+        rect: caretPadding.inflateRect(horizontalTargetOffset.rect),
         duration: _caretAnimationDuration,
         curve: _caretAnimationCurve,
       );
@@ -2484,9 +2558,10 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
   @override
   void bringIntoView(TextPosition position) {
     final Rect localRect = renderEditable.getLocalRectForCaret(position);
-    final RevealedOffset targetOffset = _getOffsetToRevealCaret(localRect);
+    // fixme
+    final RevealedOffset targetOffset = _getHorizontalOffsetToRevealCaret(localRect);
 
-    _scrollController.jumpTo(targetOffset.offset);
+    _horizontalScrollController.jumpTo(targetOffset.offset);
     renderEditable.showOnScreen(rect: targetOffset.rect);
   }
 
@@ -2716,8 +2791,8 @@ class MyEditableTextState extends State<MyEditableText> with AutomaticKeepAliveC
             excludeFromSemantics: true,
             horizontalAxisDirection: AxisDirection.right,
             verticalAxisDirection: AxisDirection.down,
-            horizontalController: _scrollController,
-            verticalController: _scrollController, // fixme
+            horizontalController: _horizontalScrollController,
+            verticalController: _verticalScrollController,
             physics: widget.scrollPhysics,
             dragStartBehavior: widget.dragStartBehavior,
             restorationId: widget.restorationId,
