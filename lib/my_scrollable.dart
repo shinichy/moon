@@ -460,6 +460,9 @@ class MySingleScrollableState implements ScrollContext {
 /// [MyScrollable], provide it with a [ScrollPhysics].
 class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixin, RestorationMixin
     implements MyScrollContext {
+  late MySingleScrollableState _horizontalState;
+  late MySingleScrollableState _verticalState;
+
   /// The manager for this [MyScrollable] widget's horizontal viewport position.
   ///
   /// To control what kind of [ScrollPosition] is created for a [MyScrollable],
@@ -511,7 +514,7 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
       scheduleMicrotask(oldPosition.dispose);
     }
 
-    _horizontalPosition = _effectiveHorizontalScrollController.createScrollPosition(_physics!, toHorizontalContext(), oldPosition);
+    _horizontalPosition = _effectiveHorizontalScrollController.createScrollPosition(_physics!, _horizontalState, oldPosition);
     assert(_horizontalPosition != null);
     _effectiveHorizontalScrollController.attach(horizontalPosition);
   }
@@ -534,7 +537,7 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
       scheduleMicrotask(oldPosition.dispose);
     }
 
-    _verticalPosition = _effectiveVerticalScrollController.createScrollPosition(_physics!, toVerticalContext(), oldPosition);
+    _verticalPosition = _effectiveVerticalScrollController.createScrollPosition(_physics!, _verticalState, oldPosition);
     assert(_verticalPosition != null);
     _effectiveVerticalScrollController.attach(verticalPosition);
   }
@@ -565,6 +568,8 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
     if (widget.verticalController == null) {
       _fallbackVerticalScrollController = ScrollController();
     }
+    _horizontalState = MySingleScrollableState(this, AxisDirection.right);
+    _verticalState = MySingleScrollableState(this, AxisDirection.down);
     super.initState();
   }
 
@@ -1029,14 +1034,6 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
 
   @override
   String? get restorationId => widget.restorationId;
-
-  ScrollContext toHorizontalContext() {
-    return MySingleScrollableState(this, AxisDirection.right);
-  }
-
-  ScrollContext toVerticalContext() {
-    return MySingleScrollableState(this, AxisDirection.down);
-  }
 }
 
 /// With [_ScrollSemantics] certain child [SemanticsNode]s can be
