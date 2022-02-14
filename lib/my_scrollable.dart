@@ -9,9 +9,9 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 
 import 'my_scroll_context.dart';
 
@@ -1011,17 +1011,18 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
       controller: _effectiveVerticalScrollController,
     );
 
-    final Widget horizontalScrollbar = _configuration.buildScrollbar(
+    final Widget verticalScrollbar = _configuration.buildScrollbar(
       context,
-      _configuration.buildOverscrollIndicator(context, result, horizontalDetails),
-      horizontalDetails,
-    );
-
-    return _configuration.buildScrollbar(
-      context,
-      _configuration.buildOverscrollIndicator(context, horizontalScrollbar, verticalDetails),
+      _configuration.buildOverscrollIndicator(context, result, verticalDetails),
       verticalDetails,
     );
+
+    // Need to create Scrollbar explicitly because _configuration.buildScrollbar skips creating a horizontal scrollbar.
+    final Scrollbar horizontalScrollbar = Scrollbar(
+      controller: horizontalDetails.controller,
+      child: verticalScrollbar,
+    );
+    return horizontalScrollbar;
   }
 
   @override
