@@ -894,6 +894,21 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
     return delta;
   }
 
+  void _handlePointerScroll(PointerEvent event) {
+    assert(event is PointerScrollEvent);
+    final double horizontalDelta = _horizontalPointerSignalEventDelta(event as PointerScrollEvent);
+    final double horizontalTargetScrollOffset = _targetHorizontalScrollOffsetForPointerScroll(horizontalDelta);
+    if (horizontalDelta != 0.0 && horizontalTargetScrollOffset != horizontalPosition.pixels) {
+      horizontalPosition.pointerScroll(horizontalDelta);
+    }
+
+    final double verticalDelta = _verticalPointerSignalEventDelta(event as PointerScrollEvent);
+    final double verticalTargetScrollOffset = _targetVerticalScrollOffsetForPointerScroll(verticalDelta);
+    if (verticalDelta != 0.0 && verticalTargetScrollOffset != verticalPosition.pixels) {
+      verticalPosition.pointerScroll(verticalDelta);
+    }
+  }
+
   void _receivedPointerSignal(PointerSignalEvent event) {
     // Horizontal
     if (event is PointerScrollEvent && _horizontalPosition != null) {
@@ -904,7 +919,8 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
       final double targetScrollOffset = _targetHorizontalScrollOffsetForPointerScroll(delta);
       // Only express interest in the event if it would actually result in a scroll.
       if (delta != 0.0 && targetScrollOffset != horizontalPosition.pixels) {
-        GestureBinding.instance!.pointerSignalResolver.register(event, _handleHorizontalPointerScroll);
+        GestureBinding.instance!.pointerSignalResolver.register(event, _handlePointerScroll);
+        return;
       }
     }
 
@@ -917,26 +933,8 @@ class MyScrollableState extends State<MyScrollable> with TickerProviderStateMixi
       final double targetScrollOffset = _targetVerticalScrollOffsetForPointerScroll(delta);
       // Only express interest in the event if it would actually result in a scroll.
       if (delta != 0.0 && targetScrollOffset != verticalPosition.pixels) {
-        GestureBinding.instance!.pointerSignalResolver.register(event, _handleVerticalPointerScroll);
+        GestureBinding.instance!.pointerSignalResolver.register(event, _handlePointerScroll);
       }
-    }
-  }
-
-  void _handleHorizontalPointerScroll(PointerEvent event) {
-    assert(event is PointerScrollEvent);
-    final double delta = _horizontalPointerSignalEventDelta(event as PointerScrollEvent);
-    final double targetScrollOffset = _targetHorizontalScrollOffsetForPointerScroll(delta);
-    if (delta != 0.0 && targetScrollOffset != horizontalPosition.pixels) {
-      horizontalPosition.pointerScroll(delta);
-    }
-  }
-
-  void _handleVerticalPointerScroll(PointerEvent event) {
-    assert(event is PointerScrollEvent);
-    final double delta = _verticalPointerSignalEventDelta(event as PointerScrollEvent);
-    final double targetScrollOffset = _targetVerticalScrollOffsetForPointerScroll(delta);
-    if (delta != 0.0 && targetScrollOffset != verticalPosition.pixels) {
-      verticalPosition.pointerScroll(delta);
     }
   }
 
