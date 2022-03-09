@@ -4,11 +4,11 @@ import 'package:tuple/tuple.dart';
 
 import 'interval.dart';
 
-class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> {
-  final NodeBody<L, N> body;
+const int minChildren = 4;
+const int maxChildren = 8;
 
-  static const int minChildren = 4;
-  static const int maxChildren = 8;
+class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> with Clone<Node<L, N>> {
+  final NodeBody<L, N> body;
 
   Node({required this.body});
 
@@ -20,9 +20,9 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> {
     return body.height;
   }
 
-  List<Node<L,N>> getChildren() {
+  List<Node<L, N>> getChildren() {
     var val = body.val;
-    if (val is InternalVal<L,N>) {
+    if (val is InternalVal<L, N>) {
       return val.nodes;
     } else {
       throw Exception("getChildren called on leaf node");
@@ -31,7 +31,7 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> {
 
   L getLeaf() {
     var val = body.val;
-    if (val is LeafVal<L,N>) {
+    if (val is LeafVal<L, N>) {
       return val.value;
     } else {
       throw Exception("getLeaf called on internal node");
@@ -40,10 +40,10 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> {
 
   bool isOkChild() {
     var val = body.val;
-    if (val is LeafVal<L,N>) {
+    if (val is LeafVal<L, N>) {
       return val.value.isOkChild();
     }
-    if (val is InternalVal<L,N>) {
+    if (val is InternalVal<L, N>) {
       return val.nodes.length >= minChildren;
     }
 
@@ -53,7 +53,7 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> {
   T withLeaf<T>(T Function(L) f, N Function(L) computeInfo) {
     var inner = body;
     var val = inner.val;
-    if (val is LeafVal<L,N>) {
+    if (val is LeafVal<L, N>) {
       var result = f(val.value);
       inner.len = val.value.len();
       inner.info = computeInfo(val.value);
@@ -63,16 +63,32 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> {
     }
   }
 
+  Interval interval() {
+    return this.body.info.interval(body.len);
+  }
+
+  Node<L, N> edit(IntervalBounds iv, Node<L, N> newNode,
+      N Function(L) computeInfo, Node<L, N> Function() fromLeaf) {
+    var b = TreeBuilder<L, N>();
+    var iv2 = iv.intoInterval(len());
+    var selfIv = interval();
+    b.pushSlice(this, selfIv.prefix(iv2), computeInfo);
+    b.push(newNode, computeInfo);
+    b.pushSlice(this, selfIv.suffix(iv2), computeInfo);
+    return b.build(fromLeaf);
+  }
+
   static Node<L, N> fromLeaf<L extends Leaf<L>, N extends NodeInfo<L, N>>(
       L l, N Function(L) computeInfo) {
     var len = l.len();
     var info = computeInfo(l);
-    var body = NodeBody(
-        height: 0, len: len, info: info, val: LeafVal<L, N>(value: l));
+    var body =
+        NodeBody(height: 0, len: len, info: info, val: LeafVal<L, N>(value: l));
     return Node<L, N>(body: body);
   }
 
-  static Node<L,N> fromNodes<L extends Leaf<L>, N extends NodeInfo<L, N>>(List<Node<L,N>> nodes) {
+  static Node<L, N> fromNodes<L extends Leaf<L>, N extends NodeInfo<L, N>>(
+      List<Node<L, N>> nodes) {
     assert(nodes.length > 1);
     assert(nodes.length <= maxChildren);
     var height = nodes[0].body.height + 1;
@@ -85,21 +101,41 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> {
       len += child.body.len;
       info.accumulate(child.body.info);
     }
-    return Node(body: NodeBody(height: height, len: len, info: info, val: InternalVal(nodes: nodes)));
+    return Node(
+        body: NodeBody(
+            height: height,
+            len: len,
+            info: info,
+            val: InternalVal(nodes: nodes)));
   }
 
   static Node<L, N> concat<L extends Leaf<L>, N extends NodeInfo<L, N>>(
       Node<L, N> rope1, Node<L, N> rope2) {
     throw UnimplementedError;
   }
+
+  @override
+  Node<L, N> clone() {
+    return Node(body: body.clone());
+  }
 }
 
-abstract class Leaf<Self extends Leaf<Self>> {
+abstract class Leaf<Self extends Leaf<Self>> with Clone<Self> {
   int len();
 
   bool isOkChild();
 
   Self? pushMaybeSplit(Self other, Interval iv);
+
+  Self defaultValue();
+
+  Self subseq(Interval iv, Self self) {
+    var result = defaultValue();
+    if (result.pushMaybeSplit(self, iv) != null) {
+      throw Exception("unexpected split");
+    }
+    return result;
+  }
 }
 
 mixin Clone<Self extends Clone<Self>> {
@@ -114,7 +150,7 @@ abstract class NodeInfo<L, Self extends NodeInfo<L, Self>> with Clone<Self> {
   }
 }
 
-class NodeBody<L, N extends NodeInfo<L, N>> {
+class NodeBody<L, N extends NodeInfo<L, N>> with Clone<NodeBody<L, N>> {
   final int height;
   int len;
   N info;
@@ -126,20 +162,39 @@ class NodeBody<L, N extends NodeInfo<L, N>> {
     required this.info,
     required this.val,
   });
+
+  @override
+  NodeBody<L, N> clone() {
+    return NodeBody<L, N>(
+        height: height, len: len, info: info.clone(), val: val.clone());
+  }
 }
 
-abstract class NodeVal<L, N extends NodeInfo<L, N>> {}
+abstract class NodeVal<L, N extends NodeInfo<L, N>> with Clone<NodeVal<L, N>> {}
 
-class LeafVal<L extends Leaf<L>, N extends NodeInfo<L, N>> extends NodeVal<L, N> {
+class LeafVal<L extends Leaf<L>, N extends NodeInfo<L, N>>
+    extends NodeVal<L, N> {
   final L value;
 
   LeafVal({required this.value});
+
+  @override
+  NodeVal<L, N> clone() {
+    return LeafVal<L, N>(value: value.clone());
+  }
 }
 
-class InternalVal<L extends Leaf<L>, N extends NodeInfo<L, N>> extends NodeVal<L, N> {
-  final List<Node<L,N>> nodes;
+class InternalVal<L extends Leaf<L>, N extends NodeInfo<L, N>>
+    extends NodeVal<L, N> {
+  final List<Node<L, N>> nodes;
 
   InternalVal({required this.nodes});
+
+  @override
+  NodeVal<L, N> clone() {
+    var newNodes = nodes.map((e) => e.clone()).toList();
+    return InternalVal<L, N>(nodes: newNodes);
+  }
 }
 
 enum Ordering {
@@ -180,7 +235,8 @@ class TreeBuilder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
             tos.add(n);
           } else if (n.height() == 0) {
             var iv = Interval(start: 0, end: n.len());
-            var newLeaf = tos.last.withLeaf((l) => l.pushMaybeSplit(n.getLeaf(), iv), computeInfo);
+            var newLeaf = tos.last.withLeaf(
+                (l) => l.pushMaybeSplit(n.getLeaf(), iv), computeInfo);
             if (newLeaf != null) {
               tos.add(Node.fromLeaf(newLeaf, computeInfo));
             }
@@ -190,18 +246,19 @@ class TreeBuilder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
             var children2 = n.getChildren();
             var nChildren = children1.length + children2.length;
             var allChildren = children1 + children2;
-            if (nChildren <= Node.maxChildren) {
+            if (nChildren <= maxChildren) {
               tos.add(Node.fromNodes(allChildren));
             } else {
               // Note: this leans left. Splitting at midpoint is also an option
-              var splitpoint = min(Node.maxChildren, nChildren - Node.minChildren);
+              var splitpoint =
+                  min(maxChildren, nChildren - minChildren);
               var left = allChildren.take(splitpoint).toList();
-              var right =allChildren.skip(splitpoint).toList();
+              var right = allChildren.skip(splitpoint).toList();
               tos.add(Node.fromNodes(left));
               tos.add(Node.fromNodes(right));
             }
           }
-          if (tos.length < Node.maxChildren) {
+          if (tos.length < maxChildren) {
             break topLoop;
           }
           n = pop();
@@ -226,6 +283,38 @@ class TreeBuilder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
 
   void pushLeaf(L l, N Function(L) computeInfo) {
     push(Node.fromLeaf(l, computeInfo), computeInfo);
+  }
+
+  void pushLeafSlice(L l, Interval iv, N Function(L) computeInfo) {
+    push(Node.fromLeaf(l.subseq(iv, l), computeInfo), computeInfo);
+  }
+
+  void pushSlice(Node<L, N> n, Interval iv, N Function(L) computeInfo) {
+    if (iv.isEmpty()) {
+      return;
+    }
+    if (iv == n.interval()) {
+      push(n.clone(), computeInfo);
+      return;
+    }
+    var l = n.body.val;
+    if (l is LeafVal<L, N>) {
+      pushLeafSlice(l.value, iv, computeInfo);
+    } else if (l is InternalVal<L, N>) {
+      var offset = 0;
+      for (var child in l.nodes) {
+        if (iv.isBefore(offset)) {
+          break;
+        }
+        var childIv = child.interval();
+        var recIv =
+            iv.intersect(childIv.translate(offset)).translateNeg(offset);
+        pushSlice(child, recIv, computeInfo);
+        offset += child.len();
+      }
+    } else {
+      throw Exception("unreachable!");
+    }
   }
 
   Node<L, N> build(

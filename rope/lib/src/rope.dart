@@ -13,11 +13,15 @@ class Rope extends Node<StringLeaf, RopeInfo> {
   static RopeNode from(String s) {
     var b = RopeTreeBuilder();
     b.pushStr(s);
-    return b.build(() => Node.fromLeaf("".toLeaf(), RopeInfo.computeInfo));
+    return b.build(fromLeaf);
   }
 
   static String to(RopeNode r) {
     return r.sliceToCow(RangeFull());
+  }
+
+  static RopeNode fromLeaf() {
+    return Node.fromLeaf("".toLeaf(), RopeInfo.computeInfo);
   }
 }
 
@@ -105,11 +109,15 @@ class RopeInfo extends NodeInfo<StringLeaf, RopeInfo> {
     return RopeInfo(lines: 0, utf16Size: 0);
   }
 
-  static final int _newline = utf8.encode('\n').first;
+  static final int _newline = utf8
+      .encode('\n')
+      .first;
 
   static int _countNewlines(String s) {
     List<int> bytes = utf8.encode(s);
-    return bytes.where((b) => b == _newline).length;
+    return bytes
+        .where((b) => b == _newline)
+        .length;
   }
 
   static int _countUtf16CodeUnits(String s) {
@@ -152,32 +160,32 @@ class RopeTreeBuilder extends TreeBuilder<StringLeaf, RopeInfo> {
 
     return s;
   }
+}
 
-  static int findLeafSplitForBulk(String s) {
-    return findLeafSplit(s, minLeaf);
-  }
+int findLeafSplitForBulk(String s) {
+  return findLeafSplit(s, minLeaf);
+}
 
-  static int findLeafSplitForMerge(String s) {
-    return findLeafSplit(s, max(minLeaf, s.length - maxLeaf));
-  }
+int findLeafSplitForMerge(String s) {
+  return findLeafSplit(s, max(minLeaf, s.length - maxLeaf));
+}
 
-  static int findLeafSplit(String s, int minsplit) {
-    var splitpoint = min(maxLeaf, s.length - minLeaf);
-    // todo: use memchr?
-    var pos = s.substring(minsplit - 1, splitpoint).lastIndexOf('\n');
-    if (0 <= pos) {
-      return minsplit + pos;
-    } else {
-      while (!s.isCharBoundary(splitpoint)) {
-        splitpoint -= 1;
-      }
-      return splitpoint;
+int findLeafSplit(String s, int minsplit) {
+  var splitpoint = min(maxLeaf, s.length - minLeaf);
+  // todo: use memrchr?
+  var pos = s.substring(minsplit - 1, splitpoint).lastIndexOf('\n');
+  if (0 <= pos) {
+    return minsplit + pos;
+  } else {
+    while (!s.isCharBoundary(splitpoint)) {
+      splitpoint -= 1;
     }
+    return splitpoint;
   }
 }
 
 class StringLeaf extends Leaf<StringLeaf> {
-  final String str;
+  String str;
 
   StringLeaf(this.str);
 
@@ -193,8 +201,28 @@ class StringLeaf extends Leaf<StringLeaf> {
 
   @override
   StringLeaf? pushMaybeSplit(StringLeaf other, Interval iv) {
-    // TODO: implement pushMaybeSplit
-    throw UnimplementedError();
+    var t = iv.startEnd();
+    var start = t.item1;
+    var end = t.item2;
+    str = str + other.str.substring(start, end);
+    if (len() <= maxLeaf) {
+      return null;
+    } else {
+      var splitpoint = findLeafSplitForMerge(str);
+      var rightStr = str.substring(splitpoint);
+      str = str.substring(0, splitpoint);
+      return rightStr.toLeaf();
+    }
+  }
+
+  @override
+  StringLeaf clone() {
+    return StringLeaf(str);
+  }
+
+  @override
+  StringLeaf defaultValue() {
+    return StringLeaf("");
   }
 }
 
