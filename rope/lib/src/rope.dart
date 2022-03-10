@@ -13,7 +13,7 @@ class Rope extends Node<StringLeaf, RopeInfo> {
   static RopeNode from(String s) {
     var b = RopeTreeBuilder();
     b.pushStr(s);
-    return b.build(fromLeaf);
+    return b.build(fromLeaf, RopeInfo.computeInfo);
   }
 
   static String to(RopeNode r) {
@@ -23,6 +23,16 @@ class Rope extends Node<StringLeaf, RopeInfo> {
   static RopeNode fromLeaf() {
     return Node.fromLeaf("".toLeaf(), RopeInfo.computeInfo);
   }
+}
+
+class Chunks extends Iterable<String?> {
+  final Cursor<StringLeaf, RopeInfo> cursor;
+  final int end;
+
+  Chunks({required this.cursor, required this.end});
+
+  @override
+  Iterator<String?> get iterator => ChunkIter(cursor: cursor, end: end);
 }
 
 class ChunkIter extends Iterator<String?> {
@@ -82,6 +92,12 @@ extension RopeNodeExtension on RopeNode {
     var cursor = Cursor(root: this, position: interval.start);
     return ChunkIter(cursor: cursor, end: interval.end);
   }
+
+  Chunks chunks<T extends IntervalBounds>(T range) {
+    var interval = range.intoInterval(len());
+    var cursor = Cursor(root: this, position: interval.start);
+    return Chunks(cursor: cursor, end: interval.end);
+  }
 }
 
 class RopeInfo extends NodeInfo<StringLeaf, RopeInfo> {
@@ -109,15 +125,11 @@ class RopeInfo extends NodeInfo<StringLeaf, RopeInfo> {
     return RopeInfo(lines: 0, utf16Size: 0);
   }
 
-  static final int _newline = utf8
-      .encode('\n')
-      .first;
+  static final int _newline = utf8.encode('\n').first;
 
   static int _countNewlines(String s) {
     List<int> bytes = utf8.encode(s);
-    return bytes
-        .where((b) => b == _newline)
-        .length;
+    return bytes.where((b) => b == _newline).length;
   }
 
   static int _countUtf16CodeUnits(String s) {

@@ -20,6 +20,10 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> with Clone<Node<L, N>> {
     return body.height;
   }
 
+  bool isLeaf() {
+    return body.height == 0;
+  }
+
   List<Node<L, N>> getChildren() {
     var val = body.val;
     if (val is InternalVal<L, N>) {
@@ -75,7 +79,7 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> with Clone<Node<L, N>> {
     b.pushSlice(this, selfIv.prefix(iv2), computeInfo);
     b.push(newNode, computeInfo);
     b.pushSlice(this, selfIv.suffix(iv2), computeInfo);
-    return b.build(fromLeaf);
+    return b.build(fromLeaf, computeInfo);
   }
 
   static Node<L, N> fromLeaf<L extends Leaf<L>, N extends NodeInfo<L, N>>(
@@ -109,9 +113,89 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> with Clone<Node<L, N>> {
             val: InternalVal(nodes: nodes)));
   }
 
+  static Node<L, N> mergeNodes<L extends Leaf<L>, N extends NodeInfo<L, N>>(
+      List<Node<L, N>> children1, List<Node<L, N>> children2) {
+    var nChildren = children1.length + children2.length;
+    var allChildren = children1 + children2;
+    if (nChildren <= maxChildren) {
+      return Node.fromNodes(allChildren);
+    } else {
+      // Note: this leans left. Splitting at midpoint is also an option
+      var splitpoint = min(maxChildren, nChildren - minChildren);
+      var left = allChildren.take(splitpoint).toList();
+      var right = allChildren.skip(splitpoint).toList();
+      var parentNodes = [Node.fromNodes(left), Node.fromNodes(right)];
+      return Node.fromNodes(parentNodes);
+    }
+  }
+
+  static Node<L, N> mergeLeaves<L extends Leaf<L>, N extends NodeInfo<L, N>>(
+      Node<L, N> rope1, Node<L, N> rope2, N Function(L) computeInfo) {
+    assert(rope1.isLeaf() && rope2.isLeaf());
+
+    var bothOk = rope1.getLeaf().isOkChild() && rope2.getLeaf().isOkChild();
+    if (bothOk) {
+      return Node.fromNodes([rope1, rope2]);
+    }
+
+    var node1 = rope1.body;
+    var leaf2 = rope2.getLeaf();
+    var val = node1.val;
+    if (val is LeafVal<L, N>) {
+      var leaf1 = val.value;
+      var leaf2Iv = Interval(start: 0, end: leaf2.len());
+      var newVal = leaf1.pushMaybeSplit(leaf2, leaf2Iv);
+      node1.len = leaf1.len();
+      node1.info = computeInfo(leaf1);
+      if (newVal != null) {
+        return Node.fromNodes([rope1, Node.fromLeaf(newVal, computeInfo)]);
+      } else {
+        return rope1;
+      }
+    } else {
+      throw Exception("merge_leaves called on non-leaf");
+    }
+  }
+
   static Node<L, N> concat<L extends Leaf<L>, N extends NodeInfo<L, N>>(
-      Node<L, N> rope1, Node<L, N> rope2) {
-    throw UnimplementedError;
+      Node<L, N> rope1, Node<L, N> rope2, N Function(L) computeInfo) {
+    var h1 = rope1.height();
+    var h2 = rope2.height();
+
+    var result = h1.compareTo(h2);
+    if (result < 0) {
+      var children2 = rope2.getChildren();
+      if (h1 == h2 - 1 && rope1.isOkChild()) {
+        return Node.mergeNodes([rope1], children2);
+      }
+      var newRope = Node.concat(rope1, children2[0].clone(), computeInfo);
+      if (newRope.height() == h2 - 1) {
+        return Node.mergeNodes([newRope], children2.sublist(1));
+      } else {
+        return Node.mergeNodes(newRope.getChildren(), children2.sublist(1));
+      }
+    } else if (result == 0) {
+      if (rope1.isOkChild() && rope2.isOkChild()) {
+        return Node.fromNodes([rope1, rope2]);
+      }
+      if (h1 == 0) {
+        return Node.mergeLeaves(rope1, rope2, computeInfo);
+      }
+      return Node.mergeNodes(rope1.getChildren(), rope2.getChildren());
+    } else {
+      var children1 = rope1.getChildren();
+      if (h2 == h1 - 1 && rope2.isOkChild()) {
+        return Node.mergeNodes(children1, [rope2]);
+      }
+      var lastix = children1.length - 1;
+      var newRope = Node.concat(children1[lastix].clone(), rope2, computeInfo);
+      if (newRope.height() == h1 - 1) {
+        return Node.mergeNodes(children1.sublist(0, lastix), [newRope]);
+      } else {
+        return Node.mergeNodes(
+            children1.sublist(0, lastix), newRope.getChildren());
+      }
+    }
   }
 
   @override
@@ -227,7 +311,7 @@ class TreeBuilder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
 
       switch (ord) {
         case Ordering.less:
-          n = Node.concat(pop(), n);
+          n = Node.concat(pop(), n, computeInfo);
           break;
         case Ordering.equal:
           var tos = stack.last;
@@ -250,8 +334,7 @@ class TreeBuilder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
               tos.add(Node.fromNodes(allChildren));
             } else {
               // Note: this leans left. Splitting at midpoint is also an option
-              var splitpoint =
-                  min(maxChildren, nChildren - minChildren);
+              var splitpoint = min(maxChildren, nChildren - minChildren);
               var left = allChildren.take(splitpoint).toList();
               var right = allChildren.skip(splitpoint).toList();
               tos.add(Node.fromNodes(left));
@@ -317,15 +400,13 @@ class TreeBuilder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
     }
   }
 
-  Node<L, N> build(
-    Node<L, N> Function() fromLeaf,
-  ) {
+  Node<L, N> build(Node<L, N> Function() fromLeaf, N Function(L) computeInfo) {
     if (stack.isEmpty) {
       return fromLeaf();
     } else {
       var n = pop();
       while (stack.isNotEmpty) {
-        n = Node.concat(pop(), n);
+        n = Node.concat(pop(), n, computeInfo);
       }
       return n;
     }
