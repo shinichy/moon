@@ -3,7 +3,6 @@ import 'dart:math';
 import 'interval.dart';
 
 import 'tree.dart';
-import 'dart:convert';
 
 typedef RopeNode = Node<StringLeaf, RopeInfo>;
 
@@ -118,33 +117,15 @@ class RopeInfo extends NodeInfo<StringLeaf, RopeInfo> {
   static RopeInfo computeInfo(StringLeaf self) {
     return RopeInfo(
         lines: _countNewlines(self.str),
-        utf16Size: _countUtf16CodeUnits(self.str));
+        utf16Size: self.str.length);
   }
 
   static RopeInfo identity() {
     return RopeInfo(lines: 0, utf16Size: 0);
   }
 
-  static final int _newline = utf8.encode('\n').first;
-
   static int _countNewlines(String s) {
-    List<int> bytes = utf8.encode(s);
-    return bytes.where((b) => b == _newline).length;
-  }
-
-  static int _countUtf16CodeUnits(String s) {
-    var utf16Count = 0;
-    List<int> bytes = utf8.encode(s);
-    for (var b in bytes) {
-      if (b >= -0x40) {
-        utf16Count++;
-      }
-      if (b >= 0xf0) {
-        utf16Count++;
-      }
-    }
-
-    return utf16Count;
+    return s.allMatches("\n").length;
   }
 
   @override
