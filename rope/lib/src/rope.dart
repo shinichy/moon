@@ -57,7 +57,7 @@ class ChunkIter extends Iterator<String?> {
     var startPos = t.item2;
     var len = min(end - cursor.pos(), leaf.len() - startPos);
     cursor.nextLeaf();
-    _current = leaf.str.substring(startPos, startPos + len);
+    _current = leaf.toString().substring(startPos, startPos + len);
     return true;
   }
 }
@@ -116,8 +116,8 @@ class RopeInfo extends NodeInfo<StringLeaf, RopeInfo> {
 
   static RopeInfo computeInfo(StringLeaf self) {
     return RopeInfo(
-        lines: _countNewlines(self.str),
-        utf16Size: self.str.length);
+        lines: _countNewlines(self.toString()),
+        utf16Size: self.length);
   }
 
   static RopeInfo identity() {
@@ -178,13 +178,13 @@ int findLeafSplit(String s, int minsplit) {
 }
 
 class StringLeaf extends Leaf<StringLeaf> {
-  String str;
+  StringBuffer _sb;
 
-  StringLeaf(this.str);
+  StringLeaf(String s): _sb = StringBuffer(s);
 
   @override
   int len() {
-    return str.length;
+    return _sb.length;
   }
 
   @override
@@ -197,26 +197,33 @@ class StringLeaf extends Leaf<StringLeaf> {
     var t = iv.startEnd();
     var start = t.item1;
     var end = t.item2;
-    str = str + other.str.substring(start, end);
+    _sb.write(other.toString().substring(start, end));
     if (len() <= maxLeaf) {
       return null;
     } else {
+      var str = _sb.toString();
       var splitpoint = findLeafSplitForMerge(str);
       var rightStr = str.substring(splitpoint);
-      str = str.substring(0, splitpoint);
+      _sb = StringBuffer(str.substring(0, splitpoint));
       return rightStr.toLeaf();
     }
   }
 
   @override
   StringLeaf clone() {
-    return StringLeaf(str);
+    return StringLeaf(_sb.toString());
   }
 
   @override
   StringLeaf defaultValue() {
     return StringLeaf("");
   }
+
+  String toString() {
+    return _sb.toString();
+  }
+
+  int get length => _sb.length;
 }
 
 extension StringLeafConversion on String {
