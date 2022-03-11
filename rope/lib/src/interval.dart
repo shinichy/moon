@@ -3,10 +3,10 @@ import 'dart:math';
 import 'package:tuple/tuple.dart';
 
 class Interval {
-  int start;
-  int end;
+  final int start;
+  final int end;
 
-  Interval({required this.start, required this.end});
+  const Interval({required this.start, required this.end});
 
   bool isEmpty() {
     return end <= start;

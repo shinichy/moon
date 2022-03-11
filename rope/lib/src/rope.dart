@@ -92,7 +92,7 @@ extension RopeNodeExtension on RopeNode {
     return ChunkIter(cursor: cursor, end: interval.end);
   }
 
-  Chunks chunks<T extends IntervalBounds>(T range) {
+  Chunks chunks(IntervalBounds range) {
     var interval = range.intoInterval(len());
     var cursor = Cursor(root: this, position: interval.start);
     return Chunks(cursor: cursor, end: interval.end);
@@ -165,7 +165,7 @@ int findLeafSplitForMerge(String s) {
 
 int findLeafSplit(String s, int minsplit) {
   var splitpoint = min(maxLeaf, s.length - minLeaf);
-  // todo: use memrchr?
+  // use memrchr to improve performance?
   var pos = s.substring(minsplit - 1, splitpoint).lastIndexOf('\n');
   if (0 <= pos) {
     return minsplit + pos;
