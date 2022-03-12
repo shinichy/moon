@@ -125,7 +125,7 @@ class RopeInfo extends NodeInfo<StringLeaf, RopeInfo> {
   }
 
   static int _countNewlines(String s) {
-    return s.allMatches("\n").length;
+    return '\n'.allMatches(s).length;
   }
 
   @override
