@@ -12,6 +12,17 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> with Clone<Node<L, N>> {
 
   Node({required this.body});
 
+  int count(int offset,
+      bool Function() canFragmentFn1,
+      int Function(N, int) measureFn1,
+      int Function(N, int) measureFn2,
+      int Function(L, int) toBaseUnitsFn1,
+      int Function(L, int) fromBaseUnitsFn2) {
+    return convertMetrics(
+        offset, canFragmentFn1, measureFn1, measureFn2, toBaseUnitsFn1,
+        fromBaseUnitsFn2);
+  }
+
   int len() {
     return body.len;
   }
@@ -22,6 +33,10 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> with Clone<Node<L, N>> {
 
   bool isLeaf() {
     return body.height == 0;
+  }
+
+  bool isEmpty() {
+    return len() == 0;
   }
 
   List<Node<L, N>> getChildren() {
@@ -82,12 +97,12 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> with Clone<Node<L, N>> {
     return b.build(fromLeaf, computeInfo);
   }
 
-  static Node<L, N> fromLeaf<L extends Leaf<L>, N extends NodeInfo<L, N>>(
-      L l, N Function(L) computeInfo) {
+  static Node<L, N> fromLeaf<L extends Leaf<L>, N extends NodeInfo<L, N>>(L l,
+      N Function(L) computeInfo) {
     var len = l.len();
     var info = computeInfo(l);
     var body =
-        NodeBody(height: 0, len: len, info: info, val: LeafVal<L, N>(value: l));
+    NodeBody(height: 0, len: len, info: info, val: LeafVal<L, N>(value: l));
     return Node<L, N>(body: body);
   }
 
@@ -201,6 +216,52 @@ class Node<L extends Leaf<L>, N extends NodeInfo<L, N>> with Clone<Node<L, N>> {
   @override
   Node<L, N> clone() {
     return Node(body: body.clone());
+  }
+
+  // doesn't deal with endpoint, handle that specially if you need it
+  int convertMetrics(int m1,
+      bool Function() canFragmentFn1,
+      int Function(N, int) measureFn1,
+      int Function(N, int) measureFn2,
+      int Function(L, int) toBaseUnitsFn1,
+      int Function(L, int) fromBaseUnitsFn2) {
+    if (m1 == 0) {
+      return 0;
+    }
+
+    // If M1 can fragment, then we must land on the leaf containing
+    // the m1 boundary. Otherwise, we can land on the beginning of
+    // the leaf immediately following the M1 boundary, which may be
+    // more efficient.
+    final int m1Fudge;
+    if (canFragmentFn1()) {
+      m1Fudge = 1;
+    } else {
+      m1Fudge = 0;
+    }
+
+    var m2 = 0;
+    var node = this;
+    while (node.height() > 0) {
+      for (var child in node.getChildren()) {
+        var childM1 = child.measure(measureFn1);
+        if (m1 < childM1 + m1Fudge) {
+          node = child;
+          break;
+        }
+
+        m2 += child.measure(measureFn2);
+        m1 -= childM1;
+      }
+    }
+
+    var l = node.getLeaf();
+    var base = toBaseUnitsFn1(l, m1);
+    return m2 + fromBaseUnitsFn2(l, base);
+  }
+
+  int measure(int Function(N, int) measureFn) {
+    return measureFn(body.info, body.len);
   }
 }
 
@@ -320,7 +381,7 @@ class TreeBuilder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
           } else if (n.height() == 0) {
             var iv = Interval(start: 0, end: n.len());
             var newLeaf = tos.last.withLeaf(
-                (l) => l.pushMaybeSplit(n.getLeaf(), iv), computeInfo);
+                    (l) => l.pushMaybeSplit(n.getLeaf(), iv), computeInfo);
             if (newLeaf != null) {
               tos.add(Node.fromLeaf(newLeaf, computeInfo));
             }
@@ -391,7 +452,7 @@ class TreeBuilder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
         }
         var childIv = child.interval();
         var recIv =
-            iv.intersect(childIv.translate(offset)).translateNeg(offset);
+        iv.intersect(childIv.translate(offset)).translateNeg(offset);
         pushSlice(child, recIv, computeInfo);
         offset += child.len();
       }
@@ -425,7 +486,8 @@ class Cursor<L extends Leaf<L>, N extends NodeInfo<L, N>> {
   Cursor({
     required this.root,
     required this.position,
-  })  : cache = List<Tuple2<Node<L, N>, int>?>.filled(cursorCacheSize, null),
+  })
+      : cache = List<Tuple2<Node<L, N>, int>?>.filled(cursorCacheSize, null),
         leaf = null,
         offsetOfLeaf = 0 {
     descend();
@@ -455,10 +517,14 @@ class Cursor<L extends Leaf<L>, N extends NodeInfo<L, N>> {
       var t = cache[i]!;
       var node = t.item1;
       var j = t.item2;
-      if (j + 1 < node.getChildren().length) {
+      if (j + 1 < node
+          .getChildren()
+          .length) {
         cache[i] = Tuple2(node, j + 1);
         var nodeDown = node.getChildren()[j + 1];
-        for (var k in Iterable<int>.generate(i).toList().reversed) {
+        for (var k in Iterable<int>.generate(i)
+            .toList()
+            .reversed) {
           cache[k] = Tuple2(nodeDown, 0);
           nodeDown = nodeDown.getChildren()[0];
         }
@@ -501,4 +567,356 @@ class Cursor<L extends Leaf<L>, N extends NodeInfo<L, N>> {
     leaf = node.getLeaf();
     offsetOfLeaf = offset;
   }
+
+  /// The length of the tree.
+  int totalLen() {
+    return root.len();
+  }
+
+  /// Moves the cursor to the next boundary.
+  ///
+  /// When there is no next boundary, returns `None` and the cursor becomes invalid.
+  ///
+  /// Return value: the position of the boundary, if it exists.
+  int? next(int? Function(L, int) nextFn, int Function(N, int) measureFn) {
+    // mytodo: implement
+    if (position >= root.len() || leaf == null) {
+      leaf = null;
+      return null;
+    }
+
+    var nextInsideLeafVal = nextInsideLeaf(nextFn);
+    if (nextInsideLeafVal != null) {
+      return nextInsideLeafVal;
+    }
+
+    var nextLeafResult = nextLeaf();
+    if (nextLeafResult == null) {
+      return null;
+    }
+
+    var nextInsideLeafResult = nextInsideLeaf(nextFn);
+    if (nextInsideLeafResult != null) {
+      return nextInsideLeafResult;
+    }
+
+    // Leaf is 0-measure (otherwise would have already succeeded).
+    var measure = measureLeaf(position, measureFn);
+    descendMetric(measure + 1, measureFn);
+    var nextInsideLeafResult2 = nextInsideLeaf(nextFn);
+    if (nextInsideLeafResult2 != null) {
+      return nextInsideLeafResult2;
+    }
+
+    // Not found, properly invalidate cursor.
+    position = root.len();
+    leaf = null;
+    return null;
+  }
+
+  /// Tries to find the next boundary in the leaf the cursor is currently in.
+  int? nextInsideLeaf(int? Function(L, int) nextFn) {
+    // mytodo: implement
+    assert(leaf != null, "inconsistent, shouldn't get here");
+
+    var l = leaf!;
+    int offsetInLeaf = position - offsetOfLeaf;
+    var maybeResult = nextFn(l, offsetInLeaf);
+    if (maybeResult == null) {
+      return null;
+    }
+    offsetInLeaf = maybeResult;
+
+    if (offsetInLeaf == l.len() && offsetOfLeaf + offsetInLeaf != root.len()) {
+      nextLeaf();
+    } else {
+      position = offsetOfLeaf + offsetInLeaf;
+    }
+
+    return position;
+  }
+
+  /// Returns the measure at the beginning of the leaf containing `pos`.
+  ///
+  /// This method is O(log n) no matter the current cursor state.
+  int measureLeaf(int pos, int Function(N, int) measureFn) {
+    var node = root;
+    var metric = 0;
+
+    while (node.height() > 0) {
+      for (var child in node.getChildren()) {
+        var len = child.len();
+        if (pos < len) {
+          node = child;
+          break;
+        }
+        pos -= len;
+        metric += measureFn(child.body.info, child.body.len);
+      }
+    }
+
+    return metric;
+  }
+
+  /// Find the leaf having the given measure.
+  ///
+  /// This function sets `self.position` to the beginning of the leaf
+  /// containing the smallest offset with the given metric, and also updates
+  /// state as if [`descend`](#method.descend) was called.
+  ///
+  /// If `measure` is greater than the measure of the whole tree, then moves
+  /// to the last node.
+  void descendMetric(int measure, int Function(N, int) measureFn) {
+    var node = root;
+    var offset = 0;
+
+    while (node.height() > 0) {
+      var children = node.getChildren();
+      var i = 0;
+      while (true) {
+        if (i + 1 == children.length) {
+          break;
+        }
+
+        var child = children[i];
+        var childM = measureFn(child.body.info, child.body.len);
+        if (childM >= measure) {
+          break;
+        }
+        offset += child.len();
+        measure -= childM;
+        i += 1;
+      }
+      var cacheIx = node.height() - 1;
+      if (cacheIx < cursorCacheSize) {
+        cache[cacheIx] = Tuple2(node, i);
+      }
+      node = children[i];
+    }
+    leaf = node.getLeaf();
+    position = offset;
+    offsetOfLeaf = offset;
+  }
+
+  /// Set the position of the cursor.
+  ///
+  /// The cursor is valid after this call.
+  ///
+  /// Precondition: `position` is less than or equal to the length of the tree.
+  void set(int pos) {
+    this.position = pos;
+    var l = leaf;
+    if (l != null) {
+      if (this.position >= offsetOfLeaf &&
+          this.position < offsetOfLeaf + l.len()) {
+        return;
+      }
+    }
+    descend();
+  }
+
+  /// Returns the current position if it is a boundary in this [`Metric`],
+  /// else behaves like [`prev`](#method.prev).
+  ///
+  /// [`Metric`]: struct.Metric.html
+  int? atOrPrev(bool Function() canFragmentFn,
+      bool Function(L, int) isBoundaryFn,
+      int? Function(L, int) prevFn,
+      int Function(N, int) measureFn) {
+    if (isBoundary(canFragmentFn, isBoundaryFn)) {
+      return pos();
+    } else {
+      return prev(isBoundaryFn, prevFn, measureFn);
+    }
+  }
+
+  /// Determine whether the current position is a boundary.
+  ///
+  /// Note: the beginning and end of the tree may or may not be boundaries, depending on the
+  /// metric. If the metric is not `can_fragment`, then they always are.
+  bool isBoundary(bool Function() canFragmentFn,
+      bool Function(L, int) isBoundaryFn) {
+    if (leaf == null) {
+      // not at a valid position
+      return false;
+    }
+
+    if (position == offsetOfLeaf && !canFragmentFn()) {
+      return true;
+    }
+
+    if (position == 0 || position > offsetOfLeaf) {
+      return isBoundaryFn(leaf!, position - offsetOfLeaf);
+    }
+
+    // tricky case, at beginning of leaf, need to query end of previous
+    // leaf; TODO: would be nice if we could do it another way that didn't
+    // make the method &mut self.
+    var l = prevLeaf()!.item1;
+    var result = isBoundaryFn(l, l.len());
+    nextLeaf();
+    return result;
+  }
+
+  /// Move to beginning of previous leaf.
+  ///
+  /// Return value: same as [`get_leaf`](#method.get_leaf).
+  Tuple2<L, int>? prevLeaf() {
+    if (offsetOfLeaf == 0) {
+      leaf = null;
+      position = 0;
+      return null;
+    }
+
+    for (var i in Iterable<int>.generate(cursorCacheSize)) {
+      var cacheItem = cache[i];
+      if (cacheItem == null) {
+        // this probably can't happen
+        leaf = null;
+        return null;
+      }
+
+      var node = cacheItem.item1;
+      var j = cacheItem.item2;
+      if (j > 0) {
+        cache[i] = Tuple2(node, j - 1);
+        var nodeDown = node.getChildren()[j - 1];
+        for (var k in Iterable<int>.generate(i)
+            .toList()
+            .reversed) {
+          var lastIx = nodeDown
+              .getChildren()
+              .length - 1;
+          cache[k] = Tuple2(nodeDown, lastIx);
+          nodeDown = nodeDown.getChildren()[lastIx];
+        }
+
+        var leaf = nodeDown.getLeaf();
+        this.leaf = leaf;
+        offsetOfLeaf -= leaf.len();
+        position = offsetOfLeaf;
+        return getLeaf();
+      }
+    }
+
+    position = offsetOfLeaf - 1;
+    descend();
+    position = offsetOfLeaf;
+    return getLeaf();
+  }
+
+  /// Moves the cursor to the previous boundary.
+  ///
+  /// When there is no previous boundary, returns `None` and the cursor becomes invalid.
+  ///
+  /// Return value: the position of the boundary, if it exists.
+  int? prev(bool Function(L, int) isBoundaryFn, int? Function(L, int) prevFn,
+      int Function(N, int) measureFn) {
+    if (position == 0 || leaf == null) {
+      leaf = null;
+      return null;
+    }
+
+    var origPos = position;
+    var offsetInLeaf = origPos - offsetOfLeaf;
+    if (offsetInLeaf > 0) {
+      var l = leaf!;
+      var prevResult = prevFn(l, offsetInLeaf);
+      if (prevResult != null) {
+        position = offsetOfLeaf + prevResult;
+        return position;
+      }
+    }
+
+    // not in same leaf, need to scan backwards
+    prevLeaf();
+    var offset = lastInsideLeaf(origPos, isBoundaryFn, prevFn);
+    if (offset != null) {
+      return offset;
+    }
+
+    // Not found in previous leaf, find using measurement.
+    var measure = measureLeaf(position, measureFn);
+    if (measure == 0) {
+      leaf = null;
+      position = 0;
+      return null;
+    }
+
+    descendMetric(measure, measureFn);
+    return lastInsideLeaf(origPos, isBoundaryFn, prevFn);
+  }
+
+  /// Tries to find the last boundary in the leaf the cursor is currently in.
+  ///
+  /// If the last boundary is at the end of the leaf, it is only counted if
+  /// it is less than `orig_pos`.
+  int? lastInsideLeaf(int origPos, bool Function(L, int) isBoundaryFn,
+      int? Function(L, int) prevFn) {
+    assert(leaf != null, "inconsistent, shouldn't get here");
+    var l = leaf!;
+    var len = l.len();
+
+    if (offsetOfLeaf + len < origPos && isBoundaryFn(l, len)) {
+      nextLeaf();
+      return position;
+    }
+
+    var offsetInLeaf = prevFn(l, len);
+    if (offsetInLeaf == null) {
+      return null;
+    }
+
+    position = offsetOfLeaf + offsetInLeaf;
+    return position;
+  }
+}
+
+abstract class Metric<L extends Leaf<L>, N extends NodeInfo<L, N>> {
+  /// Return the size of the
+  /// [NodeInfo::L](trait.NodeInfo.html#associatedtype.L), as measured by this
+  /// metric.
+  ///
+  /// The usize argument is the total size/length of the node, in base units.
+  ///
+  /// # Examples
+  /// For the [LinesMetric](../rope/struct.LinesMetric.html), this gives the number of
+  /// lines in string contained in the leaf. For the
+  /// [BaseMetric](../rope/struct.BaseMetric.html), this gives the size of the string
+  /// in uft8 code units, that is, bytes.
+  int measure(N info, int len);
+
+  /// Returns the smallest offset, in base units, for an offset in measured units.
+  ///
+  /// # Invariants:
+  ///
+  /// - `from_base_units(to_base_units(x)) == x` is True for valid `x`
+  int toBaseUnits(L l, int inMeasuredUnits);
+
+  /// Returns the smallest offset in measured units corresponding to an offset in base units.
+  ///
+  /// # Invariants:
+  ///
+  /// - `from_base_units(to_base_units(x)) == x` is True for valid `x`
+  int fromBaseUnits(L l, int inBaseUnits);
+
+  /// Return whether the offset in base units is a boundary of this metric.
+  /// If a boundary is at end of a leaf then this method must return true.
+  /// However, a boundary at the beginning of a leaf is optional
+  /// (the previous leaf will be queried).
+  bool isBoundary(L l, int offset);
+
+  /// Returns the index of the boundary directly preceding offset,
+  /// or None if no such boundary exists. Input and result are in base units.
+  int? prev(L l, int offset);
+
+  /// Returns the index of the first boundary for which index > offset,
+  /// or None if no such boundary exists. Input and result are in base units.
+  int? next(L l, int offset);
+
+  /// Returns true if the measured units in this metric can span multiple
+  /// leaves.  As an example, in a metric that measures lines in a rope, a
+  /// line may start in one leaf and end in another; however in a metric
+  /// measuring bytes, storage of a single byte cannot extend across leaves.
+  bool canFragment();
 }

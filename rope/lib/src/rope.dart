@@ -1,10 +1,13 @@
 import 'dart:math';
 
+import 'delta.dart';
 import 'interval.dart';
 
 import 'tree.dart';
 
 typedef RopeNode = Node<StringLeaf, RopeInfo>;
+
+typedef RopeDelta = Delta<StringLeaf, RopeInfo>;
 
 class Rope extends Node<StringLeaf, RopeInfo> {
   Rope({required NodeBody<StringLeaf, RopeInfo> body}) : super(body: body);
@@ -21,6 +24,22 @@ class Rope extends Node<StringLeaf, RopeInfo> {
 
   static RopeNode fromLeaf() {
     return Node.fromLeaf("".toLeaf(), RopeInfo.computeInfo);
+  }
+
+  /// Return the line number corresponding to the byte index `offset`.
+  ///
+  /// The line number is 0-based, thus this is equivalent to the count of newlines
+  /// in the slice up to `offset`.
+  ///
+  /// Time complexity: O(log n)
+  ///
+  /// # Panics
+  ///
+  /// This function will panic if `offset > self.len()`. Callers are expected to
+  /// validate their input.
+  static int lineOfOffset(RopeNode rope, int offset) {
+    return rope.count(offset, BaseMetric.canFragment, BaseMetric.measure,
+        LinesMetric.measure, BaseMetric.toBaseUnits, LinesMetric.fromBaseUnits);
   }
 }
 
@@ -116,15 +135,14 @@ class RopeInfo extends NodeInfo<StringLeaf, RopeInfo> {
 
   static RopeInfo computeInfo(StringLeaf self) {
     return RopeInfo(
-        lines: _countNewlines(self.toString()),
-        utf16Size: self.length);
+        lines: countNewlines(self.toString()), utf16Size: self.length);
   }
 
   static RopeInfo identity() {
     return RopeInfo(lines: 0, utf16Size: 0);
   }
 
-  static int _countNewlines(String s) {
+  static int countNewlines(String s) {
     return '\n'.allMatches(s).length;
   }
 
@@ -180,7 +198,7 @@ int findLeafSplit(String s, int minsplit) {
 class StringLeaf extends Leaf<StringLeaf> {
   StringBuffer _sb;
 
-  StringLeaf(String s): _sb = StringBuffer(s);
+  StringLeaf(String s) : _sb = StringBuffer(s);
 
   @override
   int len() {
@@ -250,5 +268,122 @@ extension StringLeafConversion on String {
 extension RopeNodeConversion on RopeNode {
   String toStr() {
     return sliceToCow(RangeFull());
+  }
+}
+
+class LinesMetric {
+  int numLines;
+
+  LinesMetric(this.numLines);
+
+  static int measure(RopeInfo info, int len) {
+    return info.lines;
+  }
+
+  static int? prev(StringLeaf l, int offset) {
+    assert(offset > 0, "caller is responsible for validating input");
+    var pos = l.toString().substring(0, offset - 1).indexOf('\n');
+    return pos + 1;
+  }
+
+  static int? next(StringLeaf s, int offset) {
+    var pos = s.toString().indexOf('\n', offset);
+    return offset + pos + 1;
+  }
+
+  static bool canFragment() {
+    return true;
+  }
+
+  static bool isBoundary(StringLeaf l, int offset) {
+    if (offset == 0) {
+      // shouldn't be called with this, but be defensive
+      return false;
+    } else {
+      return l.toString()[offset - 1] == '\n';
+    }
+  }
+
+  static int toBaseUnits(StringLeaf l, int inMeasuredUnits) {
+    var offset = 0;
+    var s = l.toString();
+    for (var i in Iterable<int>.generate(inMeasuredUnits)) {
+      var pos = s.indexOf('\n', offset);
+      if (0 <= pos) {
+        offset += pos + 1;
+      } else {
+        throw Exception("to_base_units called with arg too large");
+      }
+    }
+
+    return offset;
+  }
+
+  static int fromBaseUnits(StringLeaf l, int inBaseUnits) {
+    return RopeInfo.countNewlines(l.toString().substring(0, inBaseUnits));
+  }
+}
+
+/// This metric let us walk utf8 text by code point.
+///
+/// `BaseMetric` implements the trait [Metric].  Both its _measured unit_ and
+/// its _base unit_ are utf8 code unit.
+///
+/// Offsets that do not correspond to codepoint boundaries are _invalid_, and
+/// calling functions that assume valid offsets with invalid offets will panic
+/// in debug mode.
+///
+/// Boundary is atomic and determined by codepoint boundary.  Atomicity is
+/// implicit, because offsets between two utf8 code units that form a code
+/// point is considered invalid. For example, if a string starts with a
+/// 0xC2 byte, then `offset=1` is invalid.
+class BaseMetric {
+  static int measure(RopeInfo info, int len) {
+    return len;
+  }
+
+  static int toBaseUnits(StringLeaf l, int inMeasuredUnits) {
+    assert(l.toString().isCharBoundary(inMeasuredUnits));
+    return inMeasuredUnits;
+  }
+
+  static int fromBaseUnits(StringLeaf l, int inBaseUnits) {
+    assert(l.toString().isCharBoundary(inBaseUnits));
+    return inBaseUnits;
+  }
+
+  static bool isBoundary(StringLeaf l, int offset) {
+    return l.toString().isCharBoundary(offset);
+  }
+
+  static int? prev(StringLeaf l, int offset) {
+    if (offset == 0) {
+      // I think it's a precondition that this will never be called
+      // with offset == 0, but be defensive.
+      return null;
+    } else {
+      var len = 1;
+      var s = l.toString();
+      while (!s.isCharBoundary(offset - len)) {
+        len += 1;
+      }
+      return offset - len;
+    }
+  }
+
+  static int? next(StringLeaf l, int offset) {
+    var s = l.toString();
+    if (offset == s.length) {
+      // I think it's a precondition that this will never be called
+      // with offset == s.len(), but be defensive.
+      return null;
+    } else {
+      var b = s[offset];
+      return offset + b.length;
+    }
+  }
+
+  static bool canFragment() {
+    return false;
   }
 }
