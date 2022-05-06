@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:rope/rope.dart';
@@ -125,7 +124,6 @@ class Document extends Stream<Document> {
     return _controller.stream.listen(onData, onError: onError, onDone: onDone);
   }
 
-  // mytodo: Update a cursor
   void insert(String chars) {
     var firstRegion = _selection.regions.first;
     var text = Rope.from(chars);
@@ -135,13 +133,11 @@ class Document extends Stream<Document> {
         RopeInfo.computeInfo,
         Rope.fromLeaf);
     _lines.setWrapWidth(_rope);
-    var visualLines = _lines.iterLines(_rope, 0);
-    lines.fromVisualLines(_rope, visualLines, _selection);
-    _notifyListeners();
     var delta = edit_ops.insert(_rope, _selection.regions, text);
     var newSel = _selection.applyDelta(delta, true);
     _selection = newSel;
-    print(lines);
-    print(_selection);
+    var visualLines = _lines.iterLines(_rope, 0);
+    lines.fromVisualLines(_rope, visualLines, _selection);
+    _notifyListeners();
   }
 }
