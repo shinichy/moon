@@ -29,6 +29,7 @@ class Builder<L extends Leaf<L>, N extends NodeInfo<L, N>> {
       : delta = Delta(els: [], baseLen: baseLen),
         lastOffset = 0;
 
+  /// Deletes the given interval. Panics if interval is not properly sorted.
   void delete(IntervalBounds interval) {
     var newInterval = interval.intoInterval(delta.baseLen);
     var start = newInterval.start;
@@ -77,6 +78,14 @@ class Delta<L extends Leaf<L>, N extends NodeInfo<L, N>> {
       builder.replace(interval, rope);
     }
     return builder.build();
+  }
+
+  @override
+  String toString() {
+    return '''
+      els: $els,
+      baseLen: $baseLen,
+    ''';
   }
 }
 

@@ -67,4 +67,8 @@ class Range extends IntervalBounds {
   Interval intoInterval(int _upperBound) {
     return Interval(start: start, end: end);
   }
+
+  bool isEmpty() {
+    return end <= start;
+  }
 }

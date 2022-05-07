@@ -116,6 +116,18 @@ extension RopeNodeExtension on RopeNode {
     var cursor = Cursor(root: this, position: interval.start);
     return Chunks(cursor: cursor, end: interval.end);
   }
+
+  /// Return the offset of the codepoint before `offset`.
+  int? prevCodepointOffset(int offset) {
+    var cursor = Cursor(root: this, position: offset);
+    return cursor.prev(BaseMetric.isBoundary ,BaseMetric.prev, BaseMetric.measure);
+  }
+
+  /// Return the offset of the codepoint after `offset`.
+  int? nextCodepointOffset(int offset) {
+    var cursor = Cursor(root: this, position: offset);
+    return cursor.next(BaseMetric.next, BaseMetric.measure);
+  }
 }
 
 class RopeInfo extends NodeInfo<StringLeaf, RopeInfo> {

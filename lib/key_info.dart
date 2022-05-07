@@ -12,6 +12,11 @@ class Modifiers {
   Modifiers.fromAndroid(int metaState)
       : _modifiers = _metaStateToModifiers(metaState);
 
+  /// Create a new [Modifiers] instance from an android `metaState` bitmask.
+  /// See [RawKeyEvent] for more background.
+  // mytodo: implement
+  Modifiers.fromMac(int metaState) : _modifiers = metaState;
+
   /// `true` if modifiers contain either control key.
   bool get ctrl => _modifiers & _modifierCtrlMask != 0;
 

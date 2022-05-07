@@ -140,4 +140,20 @@ class Document extends Stream<Document> {
     lines.fromVisualLines(_rope, visualLines, _selection);
     _notifyListeners();
   }
+
+  void deleteBackward() {
+    var firstRegion = _selection.regions.first;
+    _rope = _rope.edit(
+        Range(firstRegion.start - 1, firstRegion.start),
+        Rope.from(""),
+        RopeInfo.computeInfo,
+        Rope.fromLeaf);
+    _lines.setWrapWidth(_rope);
+    var delta = edit_ops.deleteBackward(_rope, _selection.regions);
+    var newSel = _selection.applyDelta(delta, true);
+    _selection = newSel;
+    var visualLines = _lines.iterLines(_rope, 0);
+    lines.fromVisualLines(_rope, visualLines, _selection);
+    _notifyListeners();
+  }
 }

@@ -12,3 +12,16 @@ RopeDelta insert(RopeNode base, List<SelRegion> regions, RopeNode rope) {
 
   return builder.build();
 }
+
+RopeDelta deleteBackward(RopeNode base, List<SelRegion> regions) {
+  var builder = Builder<StringLeaf, RopeInfo>(base.len());
+  for (var region in regions) {
+    var start = base.prevCodepointOffset(region.end) ?? 0;
+    var iv = Range(start, region.max());
+    if (!iv.isEmpty()) {
+      builder.delete(iv);
+    }
+  }
+
+  return builder.build();
+}

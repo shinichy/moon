@@ -39,6 +39,7 @@ class LineCol {
 
   /// The column, as a utf-8 offset from beginning of line
   final int col;
+
   @override
   String toString() {
     return 'line: $line, col: $col';
@@ -50,6 +51,7 @@ const String _zeroWidthSpace = '\u{200b}';
 /// State for editor tab
 class EditorState extends State<Editor> {
   final ScrollController _controller = ScrollController();
+
   // Height of lines (currently fixed, all lines have the same height)
   late double _lineHeight;
 
@@ -63,7 +65,7 @@ class EditorState extends State<Editor> {
   StreamSubscription<Document>? _documentStream;
 
   /// Creates a new editor state.
-  EditorState(): _defaultStyle = TextStyle(color: Color(0xFF000000)) {
+  EditorState() : _defaultStyle = TextStyle(color: Color(0xFF000000)) {
     // TODO: make style configurable
     _lineHeight = _lineHeightForStyle(_defaultStyle);
   }
@@ -101,10 +103,9 @@ class EditorState extends State<Editor> {
   }
 
   double _lineHeightForStyle(TextStyle style) {
-    ui.ParagraphBuilder builder =
-        ui.ParagraphBuilder(ui.ParagraphStyle())
-          ..pushStyle(style.getTextStyle())
-          ..addText(_zeroWidthSpace);
+    ui.ParagraphBuilder builder = ui.ParagraphBuilder(ui.ParagraphStyle())
+      ..pushStyle(style.getTextStyle())
+      ..addText(_zeroWidthSpace);
     ui.Paragraph layout = builder.build()
       ..layout(ui.ParagraphConstraints(width: double.infinity));
     return layout.height;
@@ -179,23 +180,23 @@ class EditorState extends State<Editor> {
     }
   }
 
-  void _handleCodePoint(int codePoint, Modifiers modifiers) {
+  void _handleCodePoint(int codePoint) {
     if (codePoint == 9) {
-      viewProxy.then((view) => view.insertTab());
-    } else if (codePoint == 10) {
-      viewProxy.then((view) => view.insertNewline());
+      widget.document.insert('\t');
+      // fixme: show tab correctly
+    } else if (codePoint == 13) {
+      widget.document.insert('\n');
     } else {
       String chars = String.fromCharCode(codePoint);
-      viewProxy.then((view) => view.insert(chars));
+      widget.document.insert(chars);
     }
   }
 
   void _handleKey(RawKeyEvent event) {
     if (event is RawKeyDownEvent) {
-      log.info('physicalKey=${event.physicalKey}, logicalKey=${event.logicalKey}');
-      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-
-      }
+      log.info(
+          'physicalKey=${event.physicalKey}, logicalKey=${event.logicalKey}');
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {}
 
       RawKeyEventData data = event.data;
 
@@ -205,7 +206,7 @@ class EditorState extends State<Editor> {
             'codePoint=${data.codePoint}, metaState=${data.metaState}, keyCode=${data.keyCode}');
         var modifiers = Modifiers.fromAndroid(data.metaState);
         if (data.codePoint != 0) {
-          _handleCodePoint(data.codePoint, modifiers);
+          _handleCodePoint(data.codePoint);
         } else {
           int _hidKey = keyCodeFromAndroid(data.keyCode);
           _handleHidKey(_hidKey, modifiers);
@@ -215,18 +216,42 @@ class EditorState extends State<Editor> {
             'codePoint=${data.codePoint}, modifiers=${data.modifiers}, hidUsage=${data.hidUsage}');
         var modifiers = Modifiers.fromFuchsia(data.modifiers);
         if (data.codePoint != 0 && !modifiers.ctrl) {
-          _handleCodePoint(data.codePoint, modifiers);
+          _handleCodePoint(data.codePoint);
         } else {
           _handleHidKey(data.hidUsage, modifiers);
         }
       } else if (data is RawKeyEventDataMacOs) {
         var codePoint = data.charactersIgnoringModifiers.runes.first;
+        var modifiers = Modifiers.fromMac(data.modifiers);
         log.info(
-            'charactersIgnoringModifiers=${data.charactersIgnoringModifiers}, codePoint=$codePoint, modifiers=${data.modifiers}, keyCode=${data.keyCode}');
+            '''charactersIgnoringModifiers=${data.charactersIgnoringModifiers},
+               characters=${data.characters},
+               _isUnprintableKey=${_isUnprintableKey(data.charactersIgnoringModifiers)},
+               runes=${data.charactersIgnoringModifiers.runes},
+               codePoint=$codePoint,
+               modifiers=${data.modifiers},
+               keyCode=${data.keyCode}
+               logicalKey=${data.logicalKey}''');
 
         // mytodo: Handle other keys
-        String chars = String.fromCharCode(codePoint);
-        widget.document.insert(chars);
+        if (data.modifiers == 0) {
+          if (codePoint == 9) {
+            widget.document.insert('\t');
+            // fixme: show tab correctly
+          } else if (codePoint == 13) {
+            widget.document.insert('\n');
+          } else if (data.logicalKey == LogicalKeyboardKey.backspace) {
+            widget.document.deleteBackward();
+          } else {
+            String chars = String.fromCharCode(codePoint);
+            widget.document.insert(chars);
+          }
+        } else {
+          int _hidKey = keyCodeFromAndroid(data.keyCode);
+          _handleHidKey(_hidKey, modifiers);
+        }
+        // String chars = String.fromCharCode(codePoint);
+        // widget.document.insert(chars);
         // viewProxy.then((view) => view.insert(chars));
         //
         // var modifiers = Modifiers.fromFuchsia(data.modifiers);
@@ -237,6 +262,23 @@ class EditorState extends State<Editor> {
         // }
       }
     }
+  }
+
+  /// Returns true if the given label represents an unprintable key.
+  ///
+  /// Examples of unprintable keys are "NSUpArrowFunctionKey = 0xF700"
+  /// or "NSHomeFunctionKey = 0xF729".
+  ///
+  /// See <https://developer.apple.com/documentation/appkit/1535851-function-key_unicodes?language=objc> for more
+  /// information.
+  ///
+  /// Used by [RawKeyEvent] subclasses to help construct IDs.
+  static bool _isUnprintableKey(String label) {
+    if (label.length != 1) {
+      return false;
+    }
+    final int codeUnit = label.codeUnitAt(0);
+    return codeUnit >= 0xF700 && codeUnit <= 0xF8FF;
   }
 
   void _requestKeyboard() {
@@ -272,8 +314,8 @@ class EditorState extends State<Editor> {
     var lastTapLocation = _lastTapLocation;
     if (lastTapLocation != null) {
       GestureType gestureType = GestureType.pointSelect;
-      viewProxy.then((view) => view.gesture(
-          lastTapLocation.line, lastTapLocation.col, gestureType));
+      viewProxy.then((view) =>
+          view.gesture(lastTapLocation.line, lastTapLocation.col, gestureType));
     }
   }
 
@@ -317,11 +359,11 @@ class EditorState extends State<Editor> {
     _focusAttachment.reparent();
 
     final Widget lines = ListView.builder(
-            itemExtent: _lineHeight,
-            itemCount: widget.document.lines.height,
-            itemBuilder: _itemBuilder,
-            controller: _controller,
-          );
+      itemExtent: _lineHeight,
+      itemCount: widget.document.lines.height,
+      itemBuilder: _itemBuilder,
+      controller: _controller,
+    );
 
     return RawKeyboardListener(
       focusNode: _focusNode,
